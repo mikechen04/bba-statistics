@@ -36,6 +36,40 @@ def _meets_expert(key: str, value: float) -> bool:
     threshold = EXPERT_THRESHOLDS.get(key)
     return threshold is not None and value >= threshold
 
+
+# Personal joke: this specific player's card always shows 6/7-themed numbers
+# instead of their real stats, regardless of what raw/percentile data comes in.
+_JOKE_USERNAME = "rougex15"
+_JOKE_VALUES: dict[str, float] = {
+    "games_played": 670,
+    "games_won": 67,
+    "wlr": 6.70,
+    "kd": 1.67,
+    "kills_per_game": 6.70,
+    "kills_per_round": 1.67,
+    "total_kills": 6700,
+    "deaths_per_game": 0.67,
+    "deaths_per_round": 6.70,
+    "total_deaths": 67,
+    "assists_per_game": 6.70,
+    "assists_per_round": 1.67,
+    "total_assists": 670,
+    "aces_per_game": 0.67,
+    "aces_per_round": 6.70,
+    "total_aces": 67,
+    "round_win_pct": 66.7,
+    "total_rounds_played": 670,
+    "coins_per_game": 6.70,
+    "coins_per_round": 1.67,
+    "total_coins": 6700,
+    "top1_pct": 6.7,
+    "total_top1": 67,
+    "top3_pct": 67.0,
+    "total_top3": 670,
+    "melee_pct": 66.7,
+    "ranged_pct": 6.7,
+}
+
 CANVAS_W = 1000
 MARGIN = 32
 HEADER_H = 148
@@ -81,11 +115,14 @@ class _RenderContext:
 
 def _draw_rank_badge(draw: ImageDraw.ImageDraw, x_right: int, y: int, text: str) -> None:
     font = theme.label(15)
-    w, h = text_size(draw, text, font)
     pad_x, pad_y = 10, 5
+    # Center on the glyphs' actual ink extents (not the font's ascender-based
+    # draw origin), otherwise the digits sit visibly low/off-center in the pill.
+    ink_left, ink_top, ink_right, ink_bottom = draw.textbbox((0, 0), text, font=font)
+    w, h = ink_right - ink_left, ink_bottom - ink_top
     box = (x_right - w - 2 * pad_x, y, x_right, y + h + 2 * pad_y)
     draw.rounded_rectangle(box, radius=(h + 2 * pad_y) // 2, fill=theme.MAIN_SOFT)
-    draw.text((box[0] + pad_x, box[1] + pad_y - 1), text, font=font, fill=theme.MAIN)
+    draw.text((box[0] + pad_x - ink_left, box[1] + pad_y - ink_top), text, font=font, fill=theme.MAIN)
 
 
 def _draw_section_label(draw: ImageDraw.ImageDraw, y: int, text: str) -> None:
@@ -251,7 +288,10 @@ def _draw_damage_breakdown(draw: ImageDraw.ImageDraw, y: int, ctx: _RenderContex
 
 
 def render_stats_card(username: str, uuid: str, raw: dict, percentiles: dict, tracked_total: int) -> Image.Image:
-    ctx = _RenderContext(values=compute_all(raw), percentiles=percentiles)
+    if username.lower() == _JOKE_USERNAME:
+        ctx = _RenderContext(values=dict(_JOKE_VALUES), percentiles={})
+    else:
+        ctx = _RenderContext(values=compute_all(raw), percentiles=percentiles)
 
     canvas_h = (
         HEADER_H
