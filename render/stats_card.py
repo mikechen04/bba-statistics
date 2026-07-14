@@ -37,6 +37,17 @@ def _meets_expert(key: str, value: float) -> bool:
     return threshold is not None and value >= threshold
 
 
+def _format_rank_text(entry: dict | None, rank_display: str) -> str | None:
+    """Formats a percentile-entry ({rank, total, ...}) as either "#1" or "0.1%"."""
+    if not entry or not entry.get("rank"):
+        return None
+    if rank_display == "percentile":
+        total = entry.get("total") or 1
+        top_pct = entry["rank"] / total * 100
+        return f"{top_pct:.1f}%"
+    return f"#{entry['rank']}"
+
+
 # Personal joke: this specific player's card always shows 6/7-themed numbers
 # instead of their real stats, regardless of what raw/percentile data comes in.
 _JOKE_USERNAME = "rougex15"
@@ -141,6 +152,7 @@ def _draw_stat_box(
     spec: tuple[str, list[str]],
     ctx: _RenderContext,
     value_font_size: int = 30,
+    rank_display: str = "number",
 ) -> None:
     main_key, sub_keys = spec
     box = (x, y, x + w, y + h)
@@ -151,19 +163,19 @@ def _draw_stat_box(
     cur_y = y + pad
 
     label_text = METRICS[main_key].label.upper()
-    rank = ctx.percentiles.get(main_key, {}).get("rank")
+    rank_text_main = _format_rank_text(ctx.percentiles.get(main_key), rank_display)
 
     badge_reserved = 0
-    if rank:
+    if rank_text_main:
         badge_font = theme.label(15)
-        badge_reserved = text_size(draw, f"#{rank}", badge_font)[0] + 2 * 10 + 10  # pill padding + gap
+        badge_reserved = text_size(draw, rank_text_main, badge_font)[0] + 2 * 10 + 10  # pill padding + gap
 
     available_w = w - 2 * pad - badge_reserved
     label_font, label_text = fit_font(draw, label_text, available_w, lambda s: theme.label(s), 13, 10)
     draw.text((inner_x, cur_y), label_text, font=label_font, fill=theme.MUTED_TEXT)
 
-    if rank:
-        _draw_rank_badge(draw, x + w - pad, cur_y - 4, f"#{rank}")
+    if rank_text_main:
+        _draw_rank_badge(draw, x + w - pad, cur_y - 4, rank_text_main)
 
     cur_y += text_size(draw, "A", theme.label(13))[1] + 10
 
@@ -188,8 +200,7 @@ def _draw_stat_box(
     for sub_key in sub_keys:
         sub_label = METRICS[sub_key].label
         sub_value_text = METRICS[sub_key].fmt(ctx.values[sub_key])
-        sub_rank = ctx.percentiles.get(sub_key, {}).get("rank")
-        rank_text = f"#{sub_rank}" if sub_rank else None
+        rank_text = _format_rank_text(ctx.percentiles.get(sub_key), rank_display)
         sub_qualifies = _meets_expert(sub_key, ctx.values[sub_key])
         star_r = 4.5
         star_reserved = (2 * star_r + 6) if sub_qualifies else 0
@@ -222,14 +233,20 @@ def _draw_stat_box(
 
 
 def _draw_row(
-    draw: ImageDraw.ImageDraw, y: int, h: int, specs: list[tuple[str, list[str]]], ctx: _RenderContext, value_font_size: int = 30
+    draw: ImageDraw.ImageDraw,
+    y: int,
+    h: int,
+    specs: list[tuple[str, list[str]]],
+    ctx: _RenderContext,
+    value_font_size: int = 30,
+    rank_display: str = "number",
 ) -> None:
     for col_idx, spec in enumerate(specs):
         x = MARGIN + col_idx * (COL_W + GRID_GAP)
-        _draw_stat_box(draw, x, y, COL_W, h, spec, ctx, value_font_size=value_font_size)
+        _draw_stat_box(draw, x, y, COL_W, h, spec, ctx, value_font_size=value_font_size, rank_display=rank_display)
 
 
-def _draw_damage_breakdown(draw: ImageDraw.ImageDraw, y: int, ctx: _RenderContext) -> None:
+def _draw_damage_breakdown(draw: ImageDraw.ImageDraw, y: int, ctx: _RenderContext, rank_display: str = "number") -> None:
     box = (MARGIN, y, MARGIN + CONTENT_W, y + DAMAGE_BAR_H)
     draw.rounded_rectangle(box, radius=16, fill=theme.CARD_BG, outline=theme.BORDER, width=1)
 
@@ -273,10 +290,9 @@ def _draw_damage_breakdown(draw: ImageDraw.ImageDraw, y: int, ctx: _RenderContex
         draw.text((lx, legend_y), value_text, font=value_font, fill=theme.TEXT)
         lx += text_size(draw, value_text, value_font)[0]
         if rank_key:
-            rank = ctx.percentiles.get(rank_key, {}).get("rank")
-            if rank:
+            rank_text = _format_rank_text(ctx.percentiles.get(rank_key), rank_display)
+            if rank_text:
                 lx += 8
-                rank_text = f"#{rank}"
                 draw.text((lx, legend_y), rank_text, font=legend_font, fill=theme.MAIN)
                 lx += text_size(draw, rank_text, legend_font)[0]
         return lx + 28
@@ -287,7 +303,14 @@ def _draw_damage_breakdown(draw: ImageDraw.ImageDraw, y: int, ctx: _RenderContex
     _legend_entry(lx, theme.BORDER, "Other", f"{other_pct:.1f}%", None)
 
 
-def render_stats_card(username: str, uuid: str, raw: dict, percentiles: dict, tracked_total: int) -> Image.Image:
+def render_stats_card(
+    username: str,
+    uuid: str,
+    raw: dict,
+    percentiles: dict,
+    tracked_total: int,
+    rank_display: str = "number",
+) -> Image.Image:
     if username.lower() == _JOKE_USERNAME:
         ctx = _RenderContext(values=dict(_JOKE_VALUES), percentiles={})
     else:
@@ -347,26 +370,26 @@ def render_stats_card(username: str, uuid: str, raw: dict, percentiles: dict, tr
     draw.line((MARGIN, HEADER_H, CANVAS_W - MARGIN, HEADER_H), fill=theme.BORDER, width=1)
 
     y = HEADER_H + 22
-    _draw_row(draw, y, OVERVIEW_H, OVERVIEW_ROW, ctx, value_font_size=26)
+    _draw_row(draw, y, OVERVIEW_H, OVERVIEW_ROW, ctx, value_font_size=26, rank_display=rank_display)
     y += OVERVIEW_H + GRID_GAP
 
     _draw_section_label(draw, y, "Combat")
     y += SECTION_LABEL_H
-    _draw_row(draw, y, ROW_H, COMBAT_ROW, ctx)
+    _draw_row(draw, y, ROW_H, COMBAT_ROW, ctx, rank_display=rank_display)
     y += ROW_H + GRID_GAP
 
     _draw_section_label(draw, y, "Placements & Objectives")
     y += SECTION_LABEL_H
-    _draw_row(draw, y, ROW_H, PLACEMENTS_ROW, ctx)
+    _draw_row(draw, y, ROW_H, PLACEMENTS_ROW, ctx, rank_display=rank_display)
     y += ROW_H + GRID_GAP
 
     _draw_section_label(draw, y, "Damage Breakdown")
     y += SECTION_LABEL_H
-    _draw_damage_breakdown(draw, y, ctx)
+    _draw_damage_breakdown(draw, y, ctx, rank_display=rank_display)
     y += DAMAGE_BAR_H + 22
 
     footer_text = (
-        f"Ranks and Percentiles are calculated based among {tracked_total:,} player(s) this bot has looked up."
+        f"Ranks and Percentiles are calculated among {tracked_total:,} player(s) with 100+ games tracked by this bot."
     )
     draw.text((MARGIN, y), footer_text, font=theme.body(13), fill=theme.MUTED_TEXT)
 

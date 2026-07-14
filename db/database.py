@@ -18,6 +18,12 @@ from stats.derive import METRICS, RAW_KEYS, compute_all
 
 _lock = threading.Lock()
 
+# Players with fewer games than this aren't stable enough samples to rank against,
+# so they're excluded both from the ranking pool (they don't count as a comparison
+# point for others) and from receiving a rank/percentile themselves. Their raw
+# stats are still shown on the card either way -- this only affects rank badges.
+MIN_GAMES_FOR_RANKING = 100
+
 _SCHEMA = f"""
 CREATE TABLE IF NOT EXISTS bba_stats (
     uuid TEXT PRIMARY KEY,
@@ -78,11 +84,22 @@ def tracked_player_count() -> int:
     return count
 
 
+def qualified_player_count() -> int:
+    """Count of tracked players that meet the minimum-games bar to be ranked."""
+    with _connect() as conn:
+        (count,) = conn.execute(
+            "SELECT COUNT(*) FROM bba_stats WHERE games_played >= ?", (MIN_GAMES_FOR_RANKING,)
+        ).fetchone()
+    return count
+
+
 def compute_percentiles(uuid: str) -> dict[str, dict]:
     """For each metric, return {rank, total, percentile} for the given player,
-    computed against every player currently tracked in the local database.
+    computed against every *qualified* (100+ games) player currently tracked in
+    the local database. Players below that bar get no rank/percentile at all,
+    and don't count towards other players' totals either.
     """
-    rows = all_raw_rows()
+    rows = [r for r in all_raw_rows() if (r.get("games_played") or 0) >= MIN_GAMES_FOR_RANKING]
     total = len(rows)
     if total == 0:
         return {}

@@ -22,11 +22,26 @@ class StatsCog(commands.Cog):
         self.bot = bot
 
     @app_commands.command(name="bbastats", description="Show a player's Battle Box Arena statistics.")
-    @app_commands.describe(username="MCC Island username to look up (defaults to your linked account).")
+    @app_commands.describe(
+        username="MCC Island username to look up (defaults to your linked account).",
+        rank_display="Show ranks as position numbers (#1) or percentiles (0.1%). Defaults to numbers.",
+    )
+    @app_commands.choices(
+        rank_display=[
+            app_commands.Choice(name="Number (#1, #2, ...)", value="number"),
+            app_commands.Choice(name="Percentile (0.1%, 12.5%, ...)", value="percentile"),
+        ]
+    )
     @app_commands.allowed_installs(guilds=True, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
-    async def bbastats(self, interaction: discord.Interaction, username: str | None = None) -> None:
+    async def bbastats(
+        self,
+        interaction: discord.Interaction,
+        username: str | None = None,
+        rank_display: app_commands.Choice[str] | None = None,
+    ) -> None:
         await interaction.response.defer()
+        rank_mode = rank_display.value if rank_display else "number"
 
         try:
             target = await resolve_target_username(interaction, username)
@@ -69,14 +84,20 @@ class StatsCog(commands.Cog):
         if is_joke_target:
             display_username = player_stats.username if player_stats else target
             uuid = player_stats.uuid if player_stats else "00000000-0000-0000-0000-000000000000"
-            image = await asyncio.to_thread(render_stats_card, display_username, uuid, {}, {}, 0)
+            image = await asyncio.to_thread(render_stats_card, display_username, uuid, {}, {}, 0, rank_mode)
         else:
             await asyncio.to_thread(db.upsert_player_stats, player_stats.uuid, player_stats.username, player_stats.raw)
             percentiles = await asyncio.to_thread(db.compute_percentiles, player_stats.uuid)
-            tracked_total = await asyncio.to_thread(db.tracked_player_count)
+            tracked_total = await asyncio.to_thread(db.qualified_player_count)
 
             image = await asyncio.to_thread(
-                render_stats_card, player_stats.username, player_stats.uuid, player_stats.raw, percentiles, tracked_total
+                render_stats_card,
+                player_stats.username,
+                player_stats.uuid,
+                player_stats.raw,
+                percentiles,
+                tracked_total,
+                rank_mode,
             )
 
         buffer = io.BytesIO()
