@@ -1,0 +1,17 @@
+# Secrets
+.env
+
+# Runtime data
+data/*.sqlite3
+data/*.sqlite3-journal
+cache/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS/editor
+.DS_Store
+.vscode/

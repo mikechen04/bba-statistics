@@ -1,0 +1,8 @@
+to stop
+
+Get-Process python* | Stop-Process -Force
+
+to run
+
+python bot.py
+

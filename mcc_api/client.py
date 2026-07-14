@@ -1,0 +1,118 @@
+"""Thin synchronous client for the MCC Island GraphQL API.
+
+Kept synchronous (using `requests`) for simplicity; callers running inside the
+Discord bot's async event loop should invoke these via `asyncio.to_thread`.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any
+
+import requests
+
+import config
+from mcc_api.queries import PLAYER_PARTY_QUERY, PLAYER_STATS_QUERY, RESOLVE_PLAYER_QUERY
+
+
+class McApiError(Exception):
+    """Base class for all MCC Island API errors."""
+
+
+class PlayerNotFoundError(McApiError):
+    """Raised when the requested username doesn't resolve to a known player."""
+
+
+class RateLimitedError(McApiError):
+    """Raised when the API responds with a rate-limit error (HTTP 429)."""
+
+
+class StatisticsPrivateError(McApiError):
+    """Raised when a player hasn't enabled the in-game 'Statistics' API setting."""
+
+
+@dataclass
+class PlayerStats:
+    uuid: str
+    username: str
+    raw: dict[str, Any] = field(default_factory=dict)
+
+    def get(self, key: str) -> int:
+        return self.raw.get(key) or 0
+
+
+@dataclass
+class PartyInfo:
+    uuid: str
+    username: str
+    social_enabled: bool
+    active: bool = False
+    leader: dict | None = None
+    members: list[dict] = field(default_factory=list)
+
+
+class McIslandClient:
+    def __init__(self) -> None:
+        self._session = requests.Session()
+        self._session.headers.update(
+            {
+                "X-API-Key": config.MCC_API_KEY,
+                "Content-Type": "application/json",
+                "User-Agent": config.MCC_USER_AGENT,
+            }
+        )
+
+    def _post(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
+        response = self._session.post(
+            config.MCC_API_URL,
+            json={"query": query, "variables": variables},
+            timeout=15,
+        )
+        if response.status_code == 429:
+            raise RateLimitedError("The MCC Island API is rate-limiting this bot right now. Try again shortly.")
+        response.raise_for_status()
+        payload = response.json()
+        if payload.get("errors"):
+            messages = "; ".join(e.get("message", "unknown error") for e in payload["errors"])
+            raise McApiError(f"MCC Island API returned an error: {messages}")
+        return payload.get("data") or {}
+
+    def resolve_username(self, username: str) -> tuple[str, str]:
+        """Return (uuid, canonical_username) for a username, or raise PlayerNotFoundError."""
+        data = self._post(RESOLVE_PLAYER_QUERY, {"username": username})
+        player = data.get("playerByUsername")
+        if not player:
+            raise PlayerNotFoundError(f"No MCC Island player found with the username \"{username}\".")
+        return player["uuid"], player["username"]
+
+    def get_player_stats(self, username: str) -> PlayerStats:
+        data = self._post(PLAYER_STATS_QUERY, {"username": username})
+        player = data.get("playerByUsername")
+        if not player:
+            raise PlayerNotFoundError(f"No MCC Island player found with the username \"{username}\".")
+        statistics = player.get("statistics")
+        if statistics is None:
+            raise StatisticsPrivateError(
+                f"{player['username']} hasn't enabled the in-game 'Statistics' API setting."
+            )
+        return PlayerStats(uuid=player["uuid"], username=player["username"], raw=statistics)
+
+    def get_player_party(self, username: str) -> PartyInfo:
+        data = self._post(PLAYER_PARTY_QUERY, {"username": username})
+        player = data.get("playerByUsername")
+        if not player:
+            raise PlayerNotFoundError(f"No MCC Island player found with the username \"{username}\".")
+        social = player.get("social")
+        if social is None:
+            return PartyInfo(uuid=player["uuid"], username=player["username"], social_enabled=False)
+        party = social.get("party") or {}
+        return PartyInfo(
+            uuid=player["uuid"],
+            username=player["username"],
+            social_enabled=True,
+            active=bool(party.get("active")),
+            leader=party.get("leader"),
+            members=party.get("members") or [],
+        )
+
+
+client = McIslandClient()
