@@ -94,25 +94,40 @@ def draw_star(draw: ImageDraw.ImageDraw, cx: float, cy: float, r: float, fill) -
     draw.polygon(points, fill=fill)
 
 
-def draw_heart(draw: ImageDraw.ImageDraw, cx: float, cy: float, size: float, fill) -> None:
-    """Draws a small filled heart centered at (cx, cy); `size` is roughly its full width/height."""
-    draw.ellipse((cx - size * 0.5, cy - size * 0.3, cx, cy + size * 0.2), fill=fill)
-    draw.ellipse((cx, cy - size * 0.3, cx + size * 0.5, cy + size * 0.2), fill=fill)
-    draw.polygon(
+def draw_heart(image: Image.Image, cx: float, cy: float, size: float, fill: tuple[int, int, int]) -> None:
+    """Draws a small anti-aliased filled heart centered at (cx, cy) onto `image`.
+
+    Drawn at 4x resolution on a transparent layer and downsampled, since Pillow's
+    ImageDraw has no built-in anti-aliasing and small shapes look jagged otherwise.
+    """
+    supersample = 4
+    canvas = max(int(round(size * 1.3)), 1)
+    hi_res = canvas * supersample
+
+    layer = Image.new("RGBA", (hi_res, hi_res), (0, 0, 0, 0))
+    ldraw = ImageDraw.Draw(layer)
+    lcx = lcy = hi_res / 2
+    lsize = size * supersample
+    rgba = (*fill, 255)
+    ldraw.ellipse((lcx - lsize * 0.5, lcy - lsize * 0.3, lcx, lcy + lsize * 0.2), fill=rgba)
+    ldraw.ellipse((lcx, lcy - lsize * 0.3, lcx + lsize * 0.5, lcy + lsize * 0.2), fill=rgba)
+    ldraw.polygon(
         [
-            (cx - size * 0.5, cy - size * 0.02),
-            (cx + size * 0.5, cy - size * 0.02),
-            (cx, cy + size * 0.5),
+            (lcx - lsize * 0.5, lcy - lsize * 0.02),
+            (lcx + lsize * 0.5, lcy - lsize * 0.02),
+            (lcx, lcy + lsize * 0.5),
         ],
-        fill=fill,
+        fill=rgba,
     )
+    layer = layer.resize((canvas, canvas), Image.LANCZOS)
+    image.paste(layer, (round(cx - canvas / 2), round(cy - canvas / 2)), layer)
 
 
 def build_gradient_bar(
     width: int,
     height: int,
     segments: list[tuple[float, tuple[int, int, int]]],
-    blend: int = 90,
+    blend: int = 18,
 ) -> Image.Image:
     """Builds a horizontal bar image where adjacent segment colors blend smoothly
     into each other at their boundaries, instead of a hard color cut.

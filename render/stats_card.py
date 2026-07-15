@@ -356,7 +356,7 @@ def render_stats_card(
     if username.lower() in theme.HEART_USERNAMES:
         name_left, name_top, name_right, name_bottom = draw.textbbox((name_x, name_y), username, font=name_font)
         heart_size = (name_bottom - name_top) * 0.85
-        draw_heart(draw, name_right + 14 + heart_size / 2, (name_top + name_bottom) / 2, heart_size, theme.ACCENT)
+        draw_heart(img, name_right + 14 + heart_size / 2, (name_top + name_bottom) / 2, heart_size, theme.ACCENT)
 
     draw.text(
         (name_x, avatar_y + 44),
