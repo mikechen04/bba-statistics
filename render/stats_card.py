@@ -12,7 +12,7 @@ from PIL import Image, ImageDraw
 
 from render import theme
 from render.avatar import get_avatar
-from render.shapes import build_gradient_bar, draw_gradient_text, draw_heart, draw_star, fit_font, rounded_crop, text_size
+from render.shapes import build_gradient_bar, draw_gradient_text, draw_star, fit_font, rounded_crop, text_size
 from stats.derive import METRICS, compute_all
 
 # Individual stat thresholds behind MCC Island's "Expert" LFG tier. Being accepted
@@ -354,9 +354,13 @@ def render_stats_card(
         draw.text((name_x, name_y), username, font=name_font, fill=theme.TEXT)
 
     if username.lower() in theme.HEART_USERNAMES:
-        name_left, name_top, name_right, name_bottom = draw.textbbox((name_x, name_y), username, font=name_font)
-        heart_size = (name_bottom - name_top) * 0.85
-        draw_heart(img, name_right + 14 + heart_size / 2, (name_top + name_bottom) / 2, heart_size, theme.ACCENT)
+        _, name_top, name_right, name_bottom = draw.textbbox((name_x, name_y), username, font=name_font)
+        heart_text = "<3"
+        h_left, h_top, _, h_bottom = draw.textbbox((0, 0), heart_text, font=name_font)
+        target_cy = (name_top + name_bottom) / 2
+        heart_x = name_right + 14 - h_left
+        heart_y = target_cy - (h_top + h_bottom) / 2
+        draw.text((heart_x, heart_y), heart_text, font=name_font, fill=theme.ACCENT)
 
     draw.text(
         (name_x, avatar_y + 44),
