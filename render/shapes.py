@@ -94,6 +94,67 @@ def draw_star(draw: ImageDraw.ImageDraw, cx: float, cy: float, r: float, fill) -
     draw.polygon(points, fill=fill)
 
 
+def draw_heart(draw: ImageDraw.ImageDraw, cx: float, cy: float, size: float, fill) -> None:
+    """Draws a small filled heart centered at (cx, cy); `size` is roughly its full width/height."""
+    draw.ellipse((cx - size * 0.5, cy - size * 0.3, cx, cy + size * 0.2), fill=fill)
+    draw.ellipse((cx, cy - size * 0.3, cx + size * 0.5, cy + size * 0.2), fill=fill)
+    draw.polygon(
+        [
+            (cx - size * 0.5, cy - size * 0.02),
+            (cx + size * 0.5, cy - size * 0.02),
+            (cx, cy + size * 0.5),
+        ],
+        fill=fill,
+    )
+
+
+def build_gradient_bar(
+    width: int,
+    height: int,
+    segments: list[tuple[float, tuple[int, int, int]]],
+    blend: int = 90,
+) -> Image.Image:
+    """Builds a horizontal bar image where adjacent segment colors blend smoothly
+    into each other at their boundaries, instead of a hard color cut.
+
+    `segments` is a list of (proportion, rgb_color); proportions don't need to
+    sum to 1, they're normalized internally.
+    """
+    segments = [s for s in segments if s[0] > 0] or [(1.0, (0, 0, 0))]
+    width = max(width, 1)
+    total = sum(p for p, _ in segments)
+
+    boundaries = [0.0]
+    acc = 0.0
+    for p, _ in segments:
+        acc += p
+        boundaries.append(acc / total * width)
+    colors = [c for _, c in segments]
+
+    # Clamp the blend radius so it can't spill past adjacent boundaries on thin segments.
+    if len(segments) > 1:
+        min_gap = min(boundaries[i + 1] - boundaries[i] for i in range(len(segments)))
+        blend = max(2, min(blend, int(min_gap)))
+
+    row = Image.new("RGB", (width, 1))
+    for x in range(width):
+        idx = len(segments) - 1
+        for i in range(len(segments)):
+            if x < boundaries[i + 1]:
+                idx = i
+                break
+        color = colors[idx]
+        if idx > 0:
+            boundary = boundaries[idx]
+            half = blend / 2
+            if boundary - half <= x <= boundary + half:
+                t = (x - (boundary - half)) / blend
+                c0, c1 = colors[idx - 1], colors[idx]
+                color = tuple(round(c0[k] + (c1[k] - c0[k]) * t) for k in range(3))
+        row.putpixel((x, 0), color)
+    return row.resize((width, max(height, 1)))
+
+
 def fit_font(draw: ImageDraw.ImageDraw, text: str, max_width: int, font_fn, start_size: int, min_size: int):
     """Shrinks `font_fn(size)` down from start_size to min_size until `text` fits max_width.
 

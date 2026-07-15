@@ -36,6 +36,9 @@ NAME_GRADIENTS: dict[str, tuple[tuple[int, int, int], tuple[int, int, int]]] = {
     "ceiybi": ((196, 165, 227), (242, 170, 200)),        # light purple -> light pink
 }
 
+# Usernames that get a small heart drawn next to their name, as a personal touch.
+HEART_USERNAMES: set[str] = {"ceiybi", "unravelingstasis"}
+
 _FONT_PATH = FONTS_DIR / "Lexend-Variable.ttf"
 
 # Named weights on the Lexend variable font's `wght` axis.

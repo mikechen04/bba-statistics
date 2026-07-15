@@ -12,7 +12,7 @@ from PIL import Image, ImageDraw
 
 from render import theme
 from render.avatar import get_avatar
-from render.shapes import draw_gradient_text, draw_star, fit_font, rounded_crop, text_size
+from render.shapes import build_gradient_bar, draw_gradient_text, draw_heart, draw_star, fit_font, rounded_crop, text_size
 from stats.derive import METRICS, compute_all
 
 # Individual stat thresholds behind MCC Island's "Expert" LFG tier. Being accepted
@@ -246,7 +246,8 @@ def _draw_row(
         _draw_stat_box(draw, x, y, COL_W, h, spec, ctx, value_font_size=value_font_size, rank_display=rank_display)
 
 
-def _draw_damage_breakdown(draw: ImageDraw.ImageDraw, y: int, ctx: _RenderContext, rank_display: str = "number") -> None:
+def _draw_damage_breakdown(img: Image.Image, y: int, ctx: _RenderContext, rank_display: str = "number") -> None:
+    draw = ImageDraw.Draw(img)
     box = (MARGIN, y, MARGIN + CONTENT_W, y + DAMAGE_BAR_H)
     draw.rounded_rectangle(box, radius=16, fill=theme.CARD_BG, outline=theme.BORDER, width=1)
 
@@ -265,17 +266,12 @@ def _draw_damage_breakdown(draw: ImageDraw.ImageDraw, y: int, ctx: _RenderContex
         (ranged_pct, theme.ACCENT),
         (other_pct, theme.BORDER),
     ]
-    draw.rounded_rectangle((bar_x, bar_y, bar_x + bar_w, bar_y + bar_h), radius=bar_h // 2, fill=theme.BORDER)
-    cursor_x = bar_x
-    total = sum(s[0] for s in segments) or 1
-    for pct, color in segments:
-        seg_w = round(bar_w * pct / total)
-        if seg_w <= 0:
-            continue
-        draw.rounded_rectangle(
-            (cursor_x, bar_y, min(cursor_x + seg_w, bar_x + bar_w), bar_y + bar_h), radius=bar_h // 2, fill=color
-        )
-        cursor_x += seg_w
+    # A single smoothly-blended gradient bar (rather than hard-edged blocks) so
+    # adjacent colors (melee blue -> ranged pink -> other gray) flow into each other.
+    gradient = build_gradient_bar(bar_w, bar_h, segments)
+    mask = Image.new("L", (bar_w, bar_h), 0)
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, bar_w, bar_h), radius=bar_h // 2, fill=255)
+    img.paste(gradient, (bar_x, bar_y), mask)
 
     legend_y = bar_y + bar_h + 18
     swatch = 12
@@ -349,12 +345,19 @@ def render_stats_card(
     )
 
     name_x = avatar_x + avatar_size + 20
+    name_y = avatar_y + 4
     name_font = theme.heading(30)
     gradient = theme.NAME_GRADIENTS.get(username.lower())
     if gradient:
-        draw_gradient_text(img, (name_x, avatar_y + 4), username, name_font, *gradient)
+        draw_gradient_text(img, (name_x, name_y), username, name_font, *gradient)
     else:
-        draw.text((name_x, avatar_y + 4), username, font=name_font, fill=theme.TEXT)
+        draw.text((name_x, name_y), username, font=name_font, fill=theme.TEXT)
+
+    if username.lower() in theme.HEART_USERNAMES:
+        name_left, name_top, name_right, name_bottom = draw.textbbox((name_x, name_y), username, font=name_font)
+        heart_size = (name_bottom - name_top) * 0.85
+        draw_heart(draw, name_right + 14 + heart_size / 2, (name_top + name_bottom) / 2, heart_size, theme.ACCENT)
+
     draw.text(
         (name_x, avatar_y + 44),
         "Battle Box Arena \u00b7 Lifetime Statistics",
@@ -385,7 +388,7 @@ def render_stats_card(
 
     _draw_section_label(draw, y, "Damage Breakdown")
     y += SECTION_LABEL_H
-    _draw_damage_breakdown(draw, y, ctx, rank_display=rank_display)
+    _draw_damage_breakdown(img, y, ctx, rank_display=rank_display)
     y += DAMAGE_BAR_H + 22
 
     footer_text = (
