@@ -25,6 +25,7 @@ RAW_KEYS = (
     "melee_kills",
     "ranged_kills",
     "score",
+    "playtime_ticks",
 )
 
 
@@ -116,6 +117,15 @@ METRICS: dict[str, Metric] = {
         Metric("coins_per_game", "Coins Per Game", lambda r: safe_div(r["score"], r["games_played"]), _dec_fmt),
         Metric("coins_per_round", "Coins Per Round", lambda r: safe_div(r["score"], r["rounds_played"]), _dec_fmt),
         Metric("total_coins", "Total Coins", lambda r: r["score"], _int_fmt),
+        # Raw value is in ticks (20/sec); shown as a small badge next to the
+        # username rather than in the stat grid, so it's excluded from ranking.
+        Metric(
+            "hours_played",
+            "Hours Played",
+            lambda r: safe_div(r["playtime_ticks"], 20 * 3600),
+            lambda v: f"{v:,.1f}h",
+            rankable=False,
+        ),
     ]
 }
 

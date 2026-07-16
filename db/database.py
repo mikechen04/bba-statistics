@@ -1,10 +1,20 @@
 """SQLite persistence: tracked player stat snapshots, and Discord-account links.
 
-Percentiles shown by the bot are computed relative to the pool of players this
-bot has looked up before (see stats/derive.py + compute_percentiles below), not
-a true server-wide percentile -- the public MCC Island API doesn't expose a
-global leaderboard or player count for most Battle Box Arena stats. This is
+Percentiles shown by the bot are computed relative to the pool of players
+tracked in this table, not a true server-wide percentile -- the MCC Island API
+doesn't expose a full player list or a leaderboard for most Battle Box Arena
+stats, so there's no way to enumerate "every player on MCC Island". This is
 surfaced to users in the rendered card footer.
+
+The pool is grown from three sources so it isn't limited to whoever gets
+searched directly:
+  1. Every `/bbastats` lookup upserts that player (cogs/stats.py).
+  2. Every `/bbaparty` lookup opportunistically upserts the whole party, not
+     just the searched player (cogs/party.py).
+  3. A periodic background job crawls the handful of BBA stats that do have a
+     public API leaderboard (wins, round wins, kills) to seed real
+     high-activity players in bulk (see mcc_api.client.get_leaderboard and
+     bot.py's `seed_leaderboards` task).
 """
 from __future__ import annotations
 
@@ -56,6 +66,12 @@ def _connect():
 def init_db() -> None:
     with _connect() as conn:
         conn.executescript(_SCHEMA)
+        # Forward-compatible migration: if a new raw stat key is added later
+        # (e.g. playtime), add its column instead of requiring a DB wipe.
+        existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(bba_stats)")}
+        for key in RAW_KEYS:
+            if key not in existing_cols:
+                conn.execute(f"ALTER TABLE bba_stats ADD COLUMN {key} INTEGER NOT NULL DEFAULT 0")
 
 
 def upsert_player_stats(uuid: str, username: str, raw: dict[str, int]) -> None:
@@ -110,6 +126,8 @@ def compute_percentiles(uuid: str) -> dict[str, dict]:
 
     results: dict[str, dict] = {}
     for key, metric in METRICS.items():
+        if not metric.rankable:
+            continue
         values = [computed_by_uuid[row["uuid"]][key] for row in rows]
         my_value = computed_by_uuid[uuid][key]
         if metric.direction == "asc":

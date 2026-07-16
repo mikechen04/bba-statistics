@@ -5,10 +5,13 @@ import asyncio
 import logging
 
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 
 import config
+import db.database as db
 from db.database import init_db
+from mcc_api.client import McApiError, client
+from mcc_api.queries import LEADERBOARD_SEED_KEYS
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("bba-bot")
@@ -35,8 +38,30 @@ class BbaBot(commands.Bot):
             synced = await self.tree.sync()
             log.info("Synced %d command(s) globally", len(synced))
 
+        self.seed_leaderboards.start()
+
     async def on_ready(self) -> None:
         log.info("Logged in as %s (id=%s)", self.user, self.user.id if self.user else "?")
+
+    @tasks.loop(hours=6)
+    async def seed_leaderboards(self) -> None:
+        """Grows the local percentile pool with real players by crawling the
+        handful of BBA stats that expose a public API leaderboard (there's no
+        way to enumerate the full MCC Island player base -- see db/database.py).
+        """
+        for stat_key in LEADERBOARD_SEED_KEYS:
+            try:
+                players = await asyncio.to_thread(client.get_leaderboard, stat_key)
+            except McApiError:
+                log.exception("Leaderboard seed failed for stat %s", stat_key)
+                continue
+            for player in players:
+                await asyncio.to_thread(db.upsert_player_stats, player.uuid, player.username, player.raw)
+            log.info("Leaderboard seed: cached %d player(s) from %s", len(players), stat_key)
+
+    @seed_leaderboards.before_loop
+    async def _before_seed_leaderboards(self) -> None:
+        await self.wait_until_ready()
 
 
 async def main() -> None:

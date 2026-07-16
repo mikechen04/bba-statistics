@@ -9,11 +9,30 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+import db.database as db
 from cogs.common import UserFacingError, resolve_target_username
 from mcc_api.client import McApiError, PlayerNotFoundError, RateLimitedError, client
 from render.party_card import render_party_card
 
 log = logging.getLogger(__name__)
+
+
+async def _cache_party_members(members: list[dict]) -> None:
+    """Opportunistically upserts every party member into the local percentile
+    pool, not just whoever ran the command -- this is one of the ways the pool
+    grows beyond direct /bbastats lookups (see db/database.py docs). Runs in
+    the background after the response is sent, so it never delays the reply.
+    Players with private statistics are silently skipped.
+    """
+    for member in members:
+        username = member.get("username")
+        if not username:
+            continue
+        try:
+            stats = await asyncio.to_thread(client.get_player_stats, username)
+        except McApiError:
+            continue
+        await asyncio.to_thread(db.upsert_player_stats, stats.uuid, stats.username, stats.raw)
 
 
 class PartyCog(commands.Cog):
@@ -73,6 +92,8 @@ class PartyCog(commands.Cog):
         buffer.seek(0)
         file = discord.File(buffer, filename=f"{party_info.username}_bba_party.png")
         await interaction.followup.send(file=file)
+
+        asyncio.create_task(_cache_party_members(members))
 
 
 async def setup(bot: commands.Bot) -> None:

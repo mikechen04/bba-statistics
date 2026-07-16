@@ -79,6 +79,7 @@ _JOKE_VALUES: dict[str, float] = {
     "total_top3": 670,
     "melee_pct": 66.7,
     "ranged_pct": 6.7,
+    "hours_played": 670.0,
 }
 
 CANVAS_W = 1000
@@ -133,6 +134,19 @@ def _draw_rank_badge(draw: ImageDraw.ImageDraw, x_right: int, y: int, text: str)
     w, h = ink_right - ink_left, ink_bottom - ink_top
     box = (x_right - w - 2 * pad_x, y, x_right, y + h + 2 * pad_y)
     draw.rounded_rectangle(box, radius=(h + 2 * pad_y) // 2, fill=theme.MAIN_SOFT)
+    draw.text((box[0] + pad_x - ink_left, box[1] + pad_y - ink_top), text, font=font, fill=theme.MAIN)
+
+
+def _draw_hours_badge(draw: ImageDraw.ImageDraw, x_left: float, y_center: float, text: str) -> None:
+    """Draws a small pill with playtime info, growing rightward from x_left and
+    vertically centered on y_center (matched to the username's ink extents)."""
+    font = theme.label(14)
+    pad_x, pad_y = 10, 5
+    ink_left, ink_top, ink_right, ink_bottom = draw.textbbox((0, 0), text, font=font)
+    w, h = ink_right - ink_left, ink_bottom - ink_top
+    box_h = h + 2 * pad_y
+    box = (x_left, y_center - box_h / 2, x_left + w + 2 * pad_x, y_center + box_h / 2)
+    draw.rounded_rectangle(box, radius=box_h / 2, fill=theme.MAIN_SOFT)
     draw.text((box[0] + pad_x - ink_left, box[1] + pad_y - ink_top), text, font=font, fill=theme.MAIN)
 
 
@@ -353,14 +367,19 @@ def render_stats_card(
     else:
         draw.text((name_x, name_y), username, font=name_font, fill=theme.TEXT)
 
+    _, name_top, cursor_x, name_bottom = draw.textbbox((name_x, name_y), username, font=name_font)
+    name_cy = (name_top + name_bottom) / 2
+
     if username.lower() in theme.HEART_USERNAMES:
-        _, name_top, name_right, name_bottom = draw.textbbox((name_x, name_y), username, font=name_font)
         heart_text = "<3"
-        h_left, h_top, _, h_bottom = draw.textbbox((0, 0), heart_text, font=name_font)
-        target_cy = (name_top + name_bottom) / 2
-        heart_x = name_right + 14 - h_left
-        heart_y = target_cy - (h_top + h_bottom) / 2
+        h_left, h_top, h_right, h_bottom = draw.textbbox((0, 0), heart_text, font=name_font)
+        heart_x = cursor_x + 14 - h_left
+        heart_y = name_cy - (h_top + h_bottom) / 2
         draw.text((heart_x, heart_y), heart_text, font=name_font, fill=theme.ACCENT)
+        cursor_x = heart_x + h_right
+
+    hours_text = f"{METRICS['hours_played'].fmt(ctx.values.get('hours_played', 0.0))} played"
+    _draw_hours_badge(draw, cursor_x + 14, name_cy, hours_text)
 
     draw.text(
         (name_x, avatar_y + 44),

@@ -4,7 +4,7 @@ A Discord bot for MCC Island **Battle Box Arena** stats.
 
 ## Features
 
-- **`/bbastats [username]`** — your (or another player's) BBA stats as an image card, with rank/percentile badges and gold stars on stats that meet "Expert" LFG requirements.
+- **`/bbastats [username]`** — your (or another player's) BBA stats as an image card, with hours played, rank/percentile badges, and gold stars on stats that meet "Expert" LFG requirements.
 - **`/bbaparty [username]`** — shows who a player is partied up with as an image card, or that they're solo queuing.
 - **`/link mc_username`** — link your Discord account to an MC username so you can omit `username` above.
 - **`/unlink`** — remove your linked account.

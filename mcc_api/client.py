@@ -11,7 +11,7 @@ from typing import Any
 import requests
 
 import config
-from mcc_api.queries import PLAYER_PARTY_QUERY, PLAYER_STATS_QUERY, RESOLVE_PLAYER_QUERY
+from mcc_api.queries import LEADERBOARD_QUERY, PLAYER_PARTY_QUERY, PLAYER_STATS_QUERY, RESOLVE_PLAYER_QUERY
 
 
 class McApiError(Exception):
@@ -95,6 +95,41 @@ class McIslandClient:
                 f"{player['username']} hasn't enabled the in-game 'Statistics' API setting."
             )
         return PlayerStats(uuid=player["uuid"], username=player["username"], raw=statistics)
+
+    def get_leaderboard(self, stat_key: str, rotation: str = "LIFETIME", page_size: int = 50) -> list[PlayerStats]:
+        """Crawls a public statistic leaderboard from the top down, returning the
+        full BBA statistics block for every player encountered.
+
+        The API's leaderboard depth is capped internally (observed to top out
+        around rank ~100, regardless of `amount`/`offset` requested), so this
+        can only ever seed the local cache with top-performing players for
+        `stat_key`, not "every player on MCC Island" -- there's no endpoint
+        that enumerates the full player base. See db.database module docs.
+        """
+        results: list[PlayerStats] = []
+        seen_uuids: set[str] = set()
+        highest_rank_seen = 0
+        offset = 0
+        for _ in range(10):  # safety cap on pages; real leaderboards stop far sooner
+            data = self._post(
+                LEADERBOARD_QUERY,
+                {"key": stat_key, "rotation": rotation, "amount": page_size, "offset": offset},
+            )
+            entries = (data.get("statistic") or {}).get("leaderboard") or []
+            entries = [e for e in entries if (e.get("rank") or 0) > highest_rank_seen]
+            if not entries:
+                break
+            for entry in entries:
+                player = entry.get("player")
+                if not player or player["uuid"] in seen_uuids:
+                    continue
+                seen_uuids.add(player["uuid"])
+                results.append(
+                    PlayerStats(uuid=player["uuid"], username=player["username"], raw=player.get("statistics") or {})
+                )
+            highest_rank_seen = max(e["rank"] for e in entries)
+            offset += page_size
+        return results
 
     def get_player_party(self, username: str) -> PartyInfo:
         data = self._post(PLAYER_PARTY_QUERY, {"username": username})
