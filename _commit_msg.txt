@@ -1,8 +1,0 @@
-Crawl Battle Box Quads leaderboards too, and throttle API requests
-
-Battle Box Arena and Battle Box Quads are the only Battle Box variants
-that expose any public leaderboards (checked live; base Battle Box/Duos
-has none), so the seeding job now crawls both to discover more unique
-players (roughly 91 -> 209 in testing). Added client-side request
-throttling + 429 retry/backoff so multi-request crawls and party-member
-caching don't trip the API's rate limit.
