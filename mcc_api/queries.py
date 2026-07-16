@@ -29,9 +29,17 @@ BBA_STAT_KEYS = {
 
 # Only a handful of raw stats generate a public leaderboard (`forLeaderboard`)
 # on the MCC Island API; most Battle Box Arena stats (including games_played)
-# don't. These are the ones we can crawl to seed the local percentile cache
-# with real, high-activity players beyond whoever gets looked up organically.
-LEADERBOARD_SEED_KEYS = [BBA_STAT_KEYS[alias] for alias in ("games_won", "rounds_won", "kills")]
+# don't. Across the whole Battle Box family, only the Arena and Quads variants
+# expose any leaderboards at all (checked live: base Battle Box/Duos has zero,
+# and both Arena and Quads separately expose the exact same 3: games won,
+# round wins, kills). Crawling all 6 maximizes how many unique players we can
+# discover this way -- every entry's *Battle Box Arena* stats get cached
+# regardless of which leaderboard surfaced them (see LEADERBOARD_QUERY below).
+LEADERBOARD_SEED_KEYS = [BBA_STAT_KEYS[alias] for alias in ("games_won", "rounds_won", "kills")] + [
+    "battle_box_quads_team_first_place",
+    "battle_box_quads_team_rounds_won",
+    "battle_box_quads_players_killed",
+]
 
 _stat_fields = "\n".join(
     f'      {alias}: rotationValue(statisticKey: "{key}", rotation: LIFETIME)'

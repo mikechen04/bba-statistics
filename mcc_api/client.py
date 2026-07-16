@@ -5,6 +5,8 @@ Discord bot's async event loop should invoke these via `asyncio.to_thread`.
 """
 from __future__ import annotations
 
+import threading
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -51,6 +53,11 @@ class PartyInfo:
 
 
 class McIslandClient:
+    # The API allows 3 requests/second; leave a little headroom below that so
+    # multi-request operations (leaderboard crawls, party-member caching) don't
+    # trip the rate limiter when they fire several requests back-to-back.
+    _MIN_REQUEST_INTERVAL = 0.4
+
     def __init__(self) -> None:
         self._session = requests.Session()
         self._session.headers.update(
@@ -60,21 +67,38 @@ class McIslandClient:
                 "User-Agent": config.MCC_USER_AGENT,
             }
         )
+        self._throttle_lock = threading.Lock()
+        self._last_request_at = 0.0
 
-    def _post(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
-        response = self._session.post(
-            config.MCC_API_URL,
-            json={"query": query, "variables": variables},
-            timeout=15,
-        )
-        if response.status_code == 429:
-            raise RateLimitedError("The MCC Island API is rate-limiting this bot right now. Try again shortly.")
-        response.raise_for_status()
-        payload = response.json()
-        if payload.get("errors"):
-            messages = "; ".join(e.get("message", "unknown error") for e in payload["errors"])
-            raise McApiError(f"MCC Island API returned an error: {messages}")
-        return payload.get("data") or {}
+    def _post(self, query: str, variables: dict[str, Any], _retries: int = 3) -> dict[str, Any]:
+        for attempt in range(_retries + 1):
+            with self._throttle_lock:
+                wait = self._MIN_REQUEST_INTERVAL - (time.monotonic() - self._last_request_at)
+                if wait > 0:
+                    time.sleep(wait)
+                self._last_request_at = time.monotonic()
+
+            response = self._session.post(
+                config.MCC_API_URL,
+                json={"query": query, "variables": variables},
+                timeout=15,
+            )
+            if response.status_code == 429:
+                if attempt < _retries:
+                    # Bulk operations (leaderboard crawls, party caching) can still
+                    # occasionally overlap with other in-flight requests despite the
+                    # client-side throttle above; briefly back off and retry rather
+                    # than failing the whole operation.
+                    time.sleep(1.5 * (attempt + 1))
+                    continue
+                raise RateLimitedError("The MCC Island API is rate-limiting this bot right now. Try again shortly.")
+            response.raise_for_status()
+            payload = response.json()
+            if payload.get("errors"):
+                messages = "; ".join(e.get("message", "unknown error") for e in payload["errors"])
+                raise McApiError(f"MCC Island API returned an error: {messages}")
+            return payload.get("data") or {}
+        raise RateLimitedError("The MCC Island API is rate-limiting this bot right now. Try again shortly.")
 
     def resolve_username(self, username: str) -> tuple[str, str]:
         """Return (uuid, canonical_username) for a username, or raise PlayerNotFoundError."""
