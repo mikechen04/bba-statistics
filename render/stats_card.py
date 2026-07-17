@@ -48,40 +48,6 @@ def _format_rank_text(entry: dict | None, rank_display: str) -> str | None:
     return f"#{entry['rank']}"
 
 
-# Personal joke: this specific player's card always shows 6/7-themed numbers
-# instead of their real stats, regardless of what raw/percentile data comes in.
-_JOKE_USERNAME = "rougex15"
-_JOKE_VALUES: dict[str, float] = {
-    "games_played": 670,
-    "games_won": 67,
-    "wlr": 6.70,
-    "kd": 1.67,
-    "kills_per_game": 6.70,
-    "kills_per_round": 1.67,
-    "total_kills": 6700,
-    "deaths_per_game": 0.67,
-    "deaths_per_round": 6.70,
-    "total_deaths": 67,
-    "assists_per_game": 6.70,
-    "assists_per_round": 1.67,
-    "total_assists": 670,
-    "aces_per_game": 0.67,
-    "aces_per_round": 6.70,
-    "total_aces": 67,
-    "round_win_pct": 66.7,
-    "total_rounds_played": 670,
-    "coins_per_game": 6.70,
-    "coins_per_round": 1.67,
-    "total_coins": 6700,
-    "top1_pct": 6.7,
-    "total_top1": 67,
-    "top3_pct": 67.0,
-    "total_top3": 670,
-    "melee_pct": 66.7,
-    "ranged_pct": 6.7,
-    "hours_played": 670.0,
-}
-
 CANVAS_W = 1000
 MARGIN = 32
 HEADER_H = 148
@@ -321,10 +287,7 @@ def render_stats_card(
     tracked_total: int,
     rank_display: str = "number",
 ) -> Image.Image:
-    if username.lower() == _JOKE_USERNAME:
-        ctx = _RenderContext(values=dict(_JOKE_VALUES), percentiles={})
-    else:
-        ctx = _RenderContext(values=compute_all(raw), percentiles=percentiles)
+    ctx = _RenderContext(values=compute_all(raw), percentiles=percentiles)
 
     canvas_h = (
         HEADER_H

@@ -16,6 +16,10 @@ from render.stats_card import render_stats_card
 
 log = logging.getLogger(__name__)
 
+# Personal touch: this player's real stats are shown like anyone else's, just
+# under a different display name on the rendered card.
+_DISPLAY_NAME_OVERRIDES: dict[str, str] = {"rougex15": "rougex67"}
+
 
 class StatsCog(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
@@ -49,56 +53,43 @@ class StatsCog(commands.Cog):
             await interaction.followup.send(str(e), ephemeral=True)
             return
 
-        # Joke card: always shows fake numbers for this specific player, regardless of
-        # their real stats/privacy settings, and never touches the shared tracking DB.
-        is_joke_target = target.lower() == "rougex15"
-
         try:
             player_stats = await asyncio.to_thread(client.get_player_stats, target)
         except PlayerNotFoundError as e:
-            if not is_joke_target:
-                await interaction.followup.send(str(e), ephemeral=True)
-                return
-            player_stats = None
+            await interaction.followup.send(str(e), ephemeral=True)
+            return
         except StatisticsPrivateError as e:
-            if not is_joke_target:
-                await interaction.followup.send(
-                    f"{e} They need to enable the **Statistics** API setting in-game "
-                    "(MCC Island settings menu) before their stats can be viewed here.",
-                    ephemeral=True,
-                )
-                return
-            player_stats = None
+            await interaction.followup.send(
+                f"{e} They need to enable the **Statistics** API setting in-game "
+                "(MCC Island settings menu) before their stats can be viewed here.",
+                ephemeral=True,
+            )
+            return
         except RateLimitedError as e:
             await interaction.followup.send(str(e), ephemeral=True)
             return
         except McApiError as e:
-            if not is_joke_target:
-                log.exception("Error fetching player stats")
-                await interaction.followup.send(
-                    f"Something went wrong talking to the MCC Island API: {e}", ephemeral=True
-                )
-                return
-            player_stats = None
-
-        if is_joke_target:
-            display_username = player_stats.username if player_stats else target
-            uuid = player_stats.uuid if player_stats else "00000000-0000-0000-0000-000000000000"
-            image = await asyncio.to_thread(render_stats_card, display_username, uuid, {}, {}, 0, rank_mode)
-        else:
-            await asyncio.to_thread(db.upsert_player_stats, player_stats.uuid, player_stats.username, player_stats.raw)
-            percentiles = await asyncio.to_thread(db.compute_percentiles, player_stats.uuid)
-            tracked_total = await asyncio.to_thread(db.qualified_player_count)
-
-            image = await asyncio.to_thread(
-                render_stats_card,
-                player_stats.username,
-                player_stats.uuid,
-                player_stats.raw,
-                percentiles,
-                tracked_total,
-                rank_mode,
+            log.exception("Error fetching player stats")
+            await interaction.followup.send(
+                f"Something went wrong talking to the MCC Island API: {e}", ephemeral=True
             )
+            return
+
+        await asyncio.to_thread(db.upsert_player_stats, player_stats.uuid, player_stats.username, player_stats.raw)
+        percentiles = await asyncio.to_thread(db.compute_percentiles, player_stats.uuid)
+        tracked_total = await asyncio.to_thread(db.qualified_player_count)
+
+        display_username = _DISPLAY_NAME_OVERRIDES.get(player_stats.username.lower(), player_stats.username)
+
+        image = await asyncio.to_thread(
+            render_stats_card,
+            display_username,
+            player_stats.uuid,
+            player_stats.raw,
+            percentiles,
+            tracked_total,
+            rank_mode,
+        )
 
         buffer = io.BytesIO()
         image.save(buffer, format="PNG")
