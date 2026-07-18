@@ -140,6 +140,27 @@ def compute_percentiles(uuid: str) -> dict[str, dict]:
     return results
 
 
+def compute_leaderboard(metric_key: str) -> list[dict]:
+    """Ranks every qualified (100+ games) tracked player for a single metric,
+    best to worst. Returns a list of {rank, uuid, username, value} dicts.
+
+    This is a *locally computed* leaderboard over our own cached pool, not the
+    MCC Island API's native leaderboard (which only exists for 3 raw stats) --
+    see /bbalb in cogs/leaderboard.py, which is why it can cover every metric.
+    """
+    metric = METRICS.get(metric_key)
+    if metric is None:
+        return []
+
+    rows = [r for r in all_raw_rows() if (r.get("games_played") or 0) >= MIN_GAMES_FOR_RANKING]
+    scored = [(row["uuid"], row["username"], compute_all(row)[metric_key]) for row in rows]
+    scored.sort(key=lambda t: t[2], reverse=(metric.direction != "asc"))
+    return [
+        {"rank": i + 1, "uuid": uuid, "username": username, "value": value}
+        for i, (uuid, username, value) in enumerate(scored)
+    ]
+
+
 def link_account(discord_id: str, uuid: str, username: str) -> None:
     with _connect() as conn:
         conn.execute(

@@ -12,13 +12,10 @@ from discord.ext import commands
 import db.database as db
 from cogs.common import UserFacingError, resolve_target_username
 from mcc_api.client import McApiError, PlayerNotFoundError, RateLimitedError, StatisticsPrivateError, client
+from render import theme
 from render.stats_card import render_stats_card
 
 log = logging.getLogger(__name__)
-
-# Personal touch: this player's real stats are shown like anyone else's, just
-# under a different display name on the rendered card.
-_DISPLAY_NAME_OVERRIDES: dict[str, str] = {"rougex15": "rougex67"}
 
 
 class StatsCog(commands.Cog):
@@ -79,7 +76,7 @@ class StatsCog(commands.Cog):
         percentiles = await asyncio.to_thread(db.compute_percentiles, player_stats.uuid)
         tracked_total = await asyncio.to_thread(db.qualified_player_count)
 
-        display_username = _DISPLAY_NAME_OVERRIDES.get(player_stats.username.lower(), player_stats.username)
+        display_username = theme.DISPLAY_NAME_OVERRIDES.get(player_stats.username.lower(), player_stats.username)
 
         image = await asyncio.to_thread(
             render_stats_card,
