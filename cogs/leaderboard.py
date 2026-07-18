@@ -16,6 +16,7 @@ from discord import app_commands
 from discord.ext import commands
 
 import db.database as db
+from mcc_api.client import McApiError, PlayerNotFoundError, RateLimitedError, StatisticsPrivateError, client
 from render.leaderboard_card import render_leaderboard_card
 from stats.derive import METRICS
 
@@ -46,11 +47,19 @@ class LeaderboardCog(commands.Cog):
         return [app_commands.Choice(name=METRICS[key].label.lower(), value=key) for key in matches[:25]]
 
     @app_commands.command(name="bbalb", description="Show the top 10 tracked players for a Battle Box Arena stat.")
-    @app_commands.describe(stat="Which stat's leaderboard to show (start typing to search).")
+    @app_commands.describe(
+        stat="Which stat's leaderboard to show (start typing to search).",
+        username="MCC Island username whose rank to show below the top 10 (defaults to your linked account).",
+    )
     @app_commands.autocomplete(stat=_stat_autocomplete)
     @app_commands.allowed_installs(guilds=True, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
-    async def bbalb(self, interaction: discord.Interaction, stat: str) -> None:
+    async def bbalb(
+        self,
+        interaction: discord.Interaction,
+        stat: str,
+        username: str | None = None,
+    ) -> None:
         await interaction.response.defer()
 
         metric = METRICS.get(stat)
@@ -58,18 +67,39 @@ class LeaderboardCog(commands.Cog):
             await interaction.followup.send("idk what stat that is", ephemeral=True)
             return
 
+        # Optional: pin one player's rank under the top 10. Explicit username
+        # wins; otherwise fall back to the linked account. If neither is set,
+        # just show the top 10 with no personal row.
+        target_uuid: str | None = None
+        if username and username.strip():
+            try:
+                player_stats = await asyncio.to_thread(client.get_player_stats, username.strip())
+            except PlayerNotFoundError:
+                await interaction.followup.send("u mispelled their username", ephemeral=True)
+                return
+            except StatisticsPrivateError:
+                await interaction.followup.send("their statistics api is off", ephemeral=True)
+                return
+            except RateLimitedError:
+                await interaction.followup.send("rate limited :pensive:", ephemeral=True)
+                return
+            except McApiError as e:
+                log.exception("Error fetching player stats for /bbalb")
+                await interaction.followup.send(f"uhh {e}", ephemeral=True)
+                return
+            await asyncio.to_thread(db.upsert_player_stats, player_stats.uuid, player_stats.username, player_stats.raw)
+            target_uuid = player_stats.uuid
+        else:
+            linked = db.get_linked_account(str(interaction.user.id))
+            if linked:
+                target_uuid = linked[0]
+
         leaderboard = await asyncio.to_thread(db.compute_leaderboard, stat)
         top10 = leaderboard[:10]
 
-        # Only surface the requesting user's own rank if they're linked (per
-        # their request, no username option here -- it's always "your" rank).
-        # Silently omit it if they're not linked, not tracked, or already in
-        # the top 10 shown above.
         viewer_entry = None
-        linked = db.get_linked_account(str(interaction.user.id))
-        if linked:
-            linked_uuid = linked[0]
-            entry = next((e for e in leaderboard if e["uuid"] == linked_uuid), None)
+        if target_uuid:
+            entry = next((e for e in leaderboard if e["uuid"] == target_uuid), None)
             if entry and entry["rank"] > 10:
                 viewer_entry = entry
 
