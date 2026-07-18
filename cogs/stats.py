@@ -25,12 +25,12 @@ class StatsCog(commands.Cog):
     @app_commands.command(name="bbastats", description="Show a player's Battle Box Arena statistics.")
     @app_commands.describe(
         username="MCC Island username to look up (defaults to your linked account).",
-        rank_display="Show ranks as position numbers (#1) or percentiles (0.1%). Defaults to numbers.",
+        display="Show ranks as position numbers (#1) or percentiles (0.1%). Defaults to numbers.",
     )
     @app_commands.choices(
-        rank_display=[
-            app_commands.Choice(name="Number (#1, #2, ...)", value="number"),
-            app_commands.Choice(name="Percentile (0.1%, 12.5%, ...)", value="percentile"),
+        display=[
+            app_commands.Choice(name="numbers", value="number"),
+            app_commands.Choice(name="percentile", value="percentile"),
         ]
     )
     @app_commands.allowed_installs(guilds=True, users=True)
@@ -39,10 +39,10 @@ class StatsCog(commands.Cog):
         self,
         interaction: discord.Interaction,
         username: str | None = None,
-        rank_display: app_commands.Choice[str] | None = None,
+        display: app_commands.Choice[str] | None = None,
     ) -> None:
         await interaction.response.defer()
-        rank_mode = rank_display.value if rank_display else "number"
+        rank_mode = display.value if display else "number"
 
         try:
             target = await resolve_target_username(interaction, username)
@@ -52,24 +52,18 @@ class StatsCog(commands.Cog):
 
         try:
             player_stats = await asyncio.to_thread(client.get_player_stats, target)
-        except PlayerNotFoundError as e:
-            await interaction.followup.send(str(e), ephemeral=True)
+        except PlayerNotFoundError:
+            await interaction.followup.send("u mispelled their username", ephemeral=True)
             return
-        except StatisticsPrivateError as e:
-            await interaction.followup.send(
-                f"{e} They need to enable the **Statistics** API setting in-game "
-                "(MCC Island settings menu) before their stats can be viewed here.",
-                ephemeral=True,
-            )
+        except StatisticsPrivateError:
+            await interaction.followup.send("their statistics api is off", ephemeral=True)
             return
-        except RateLimitedError as e:
-            await interaction.followup.send(str(e), ephemeral=True)
+        except RateLimitedError:
+            await interaction.followup.send("rate limited :pensive:", ephemeral=True)
             return
         except McApiError as e:
             log.exception("Error fetching player stats")
-            await interaction.followup.send(
-                f"Something went wrong talking to the MCC Island API: {e}", ephemeral=True
-            )
+            await interaction.followup.send(f"uhh {e}", ephemeral=True)
             return
 
         await asyncio.to_thread(db.upsert_player_stats, player_stats.uuid, player_stats.username, player_stats.raw)

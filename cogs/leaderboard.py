@@ -43,7 +43,7 @@ class LeaderboardCog(commands.Cog):
             or current_lower in METRICS[key].label.lower()
             or current_lower in key.lower()
         ]
-        return [app_commands.Choice(name=METRICS[key].label, value=key) for key in matches[:25]]
+        return [app_commands.Choice(name=METRICS[key].label.lower(), value=key) for key in matches[:25]]
 
     @app_commands.command(name="bbalb", description="Show the top 10 tracked players for a Battle Box Arena stat.")
     @app_commands.describe(stat="Which stat's leaderboard to show (start typing to search).")
@@ -55,10 +55,7 @@ class LeaderboardCog(commands.Cog):
 
         metric = METRICS.get(stat)
         if metric is None:
-            await interaction.followup.send(
-                "Unknown stat. Start typing in the `stat` option to pick one from the suggestions.",
-                ephemeral=True,
-            )
+            await interaction.followup.send("idk what stat that is", ephemeral=True)
             return
 
         leaderboard = await asyncio.to_thread(db.compute_leaderboard, stat)

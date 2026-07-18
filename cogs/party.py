@@ -54,23 +54,19 @@ class PartyCog(commands.Cog):
 
         try:
             party_info = await asyncio.to_thread(client.get_player_party, target)
-        except PlayerNotFoundError as e:
-            await interaction.followup.send(str(e), ephemeral=True)
+        except PlayerNotFoundError:
+            await interaction.followup.send("u mispelled their username", ephemeral=True)
             return
-        except RateLimitedError as e:
-            await interaction.followup.send(str(e), ephemeral=True)
+        except RateLimitedError:
+            await interaction.followup.send("rate limited :pensive:", ephemeral=True)
             return
         except McApiError as e:
             log.exception("Error fetching player party")
-            await interaction.followup.send(f"Something went wrong talking to the MCC Island API: {e}", ephemeral=True)
+            await interaction.followup.send(f"uhh {e}", ephemeral=True)
             return
 
         if not party_info.social_enabled:
-            await interaction.followup.send(
-                f"{party_info.username} hasn't enabled the in-game **Social** API setting, "
-                "so their party status can't be checked here.",
-                ephemeral=True,
-            )
+            await interaction.followup.send("their social api is off", ephemeral=True)
             return
 
         if not party_info.active:
