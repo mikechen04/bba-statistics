@@ -46,12 +46,12 @@ class BbaBot(commands.Bot):
 
     async def on_message(self, message: discord.Message) -> None:
         # Owner-only, DMs only — no slash command, so other users never see it.
-        # DM the bot exactly: servers
+        # DM the bot one of: servers / server / members / guilds
         if message.guild is not None or message.author.bot:
             return
 
         content = (message.content or "").strip().lower()
-        if content != "servers":
+        if content not in {"servers", "server", "members", "guilds"}:
             if not content:
                 log.warning(
                     "Got an empty DM from %s (%s) — enable Message Content Intent if this was 'servers'",
@@ -74,6 +74,7 @@ class BbaBot(commands.Bot):
             )
             return
 
+        log.info("servers DM from owner %s (%s)", message.author, message.author.id)
         await message.channel.send("checking...")
 
         headers = {"Authorization": f"Bot {config.DISCORD_TOKEN}"}
