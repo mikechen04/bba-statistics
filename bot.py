@@ -5,6 +5,7 @@ import asyncio
 import logging
 
 import discord
+import requests
 from discord.ext import commands, tasks
 
 import config
@@ -42,6 +43,61 @@ class BbaBot(commands.Bot):
 
     async def on_ready(self) -> None:
         log.info("Logged in as %s (id=%s)", self.user, self.user.id if self.user else "?")
+
+    async def on_message(self, message: discord.Message) -> None:
+        # Owner-only, DMs only — no slash command, so other users never see it.
+        # DM the bot exactly: servers
+        if message.guild is not None or message.author.bot:
+            return
+        if message.content.strip().lower() != "servers":
+            return
+        if not await self.is_owner(message.author):
+            return
+
+        headers = {"Authorization": f"Bot {config.DISCORD_TOKEN}"}
+
+        def _fetch() -> str:
+            guilds_resp = requests.get(
+                "https://discord.com/api/v10/users/@me/guilds", headers=headers, timeout=15
+            )
+            guilds_resp.raise_for_status()
+            guilds = sorted(guilds_resp.json(), key=lambda g: g["name"].lower())
+            if not guilds:
+                return "0 servers"
+
+            chunks: list[str] = [f"**{len(guilds)} server(s)**"]
+            for g in guilds:
+                chunks.append(f"\n**{g['name']}** (`{g['id']}`)")
+                members_resp = requests.get(
+                    f"https://discord.com/api/v10/guilds/{g['id']}/members",
+                    headers=headers,
+                    params={"limit": 1000},
+                    timeout=30,
+                )
+                if members_resp.status_code == 403:
+                    chunks.append("_can't list members — enable Server Members Intent in the Dev Portal_")
+                    continue
+                members_resp.raise_for_status()
+                members = members_resp.json()
+                members.sort(key=lambda m: (m["user"].get("username") or "").lower())
+                chunks.append(f"{len(members)} member(s)")
+                for m in members:
+                    user = m["user"]
+                    label = user.get("global_name") or user.get("username") or "?"
+                    uname = user.get("username", "?")
+                    bot_tag = " [bot]" if user.get("bot") else ""
+                    chunks.append(f"- {label} (@{uname}){bot_tag}")
+            return "\n".join(chunks)
+
+        try:
+            text = await asyncio.to_thread(_fetch)
+        except Exception as e:
+            await message.channel.send(f"uhh {e}")
+            return
+
+        while text:
+            await message.channel.send(text[:1900])
+            text = text[1900:]
 
     @tasks.loop(hours=6)
     async def seed_leaderboards(self) -> None:
