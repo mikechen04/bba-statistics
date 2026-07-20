@@ -19,6 +19,13 @@ CACHE_DIR.mkdir(exist_ok=True)
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "")
 DEV_GUILD_ID = os.getenv("DEV_GUILD_ID") or None
 
+# Comma-separated Discord user IDs allowed to use the private DM "servers" command.
+# If empty, falls back to the Discord application owner only.
+_OWNER_RAW = os.getenv("OWNER_DISCORD_ID", "") or os.getenv("OWNER_DISCORD_IDS", "")
+OWNER_DISCORD_IDS: set[int] = {
+    int(piece.strip()) for piece in _OWNER_RAW.split(",") if piece.strip().isdigit()
+}
+
 MCC_API_KEY = os.getenv("MCC_API_KEY", "")
 CONTACT_INFO = os.getenv("CONTACT_INFO", "unknown")
 MCC_API_URL = "https://api.mccisland.net/graphql"

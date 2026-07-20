@@ -49,10 +49,32 @@ class BbaBot(commands.Bot):
         # DM the bot exactly: servers
         if message.guild is not None or message.author.bot:
             return
-        if message.content.strip().lower() != "servers":
+
+        content = (message.content or "").strip().lower()
+        if content != "servers":
+            if not content:
+                log.warning(
+                    "Got an empty DM from %s (%s) — enable Message Content Intent if this was 'servers'",
+                    message.author,
+                    message.author.id,
+                )
             return
-        if not await self.is_owner(message.author):
+
+        allowed = False
+        if config.OWNER_DISCORD_IDS:
+            allowed = message.author.id in config.OWNER_DISCORD_IDS
+        else:
+            allowed = await self.is_owner(message.author)
+
+        if not allowed:
+            log.info(
+                "Ignored servers DM from %s (%s) — not owner. Set OWNER_DISCORD_ID in .env to your user id.",
+                message.author,
+                message.author.id,
+            )
             return
+
+        await message.channel.send("checking...")
 
         headers = {"Authorization": f"Bot {config.DISCORD_TOKEN}"}
 
