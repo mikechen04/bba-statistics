@@ -16,8 +16,13 @@ MARGIN = 28
 HEADER_H = 56
 PANEL_H = 156
 PANEL_GAP = 16
-CHART_TOP_PAD = 18
-CHART_SIZE = 420
+# Space above the hex tip reserved for the top axis label ("Fragging"), so it
+# never collides with the player stat panel(s).
+LABEL_OUTSET = 44
+CHART_TOP_GAP = 40
+CHART_TOP_PAD = LABEL_OUTSET + CHART_TOP_GAP
+CHART_SIZE = 400
+CHART_BOTTOM_PAD = LABEL_OUTSET + 28
 LEGEND_H = 88
 FOOTER_GAP = 18
 
@@ -89,24 +94,37 @@ def _draw_radar(
     cy: int,
     radius: int,
     players: list[RadarPlayer],
+    label_min_y: float,
+    label_max_y: float,
 ) -> None:
     overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
     odraw = ImageDraw.Draw(overlay)
     draw = ImageDraw.Draw(img)
     n = len(RADAR_AXES)
 
-    # Fills first (very light) so grid lines drawn afterward stay readable.
+    # Fills first (light), then outlines, then grid on top so rings stay visible.
     for player in players:
         scores = radar_scores(player.raw)
         pts = [
             _axis_point(cx, cy, radius, i, n, scores[axis.key])
             for i, axis in enumerate(RADAR_AXES)
         ]
-        odraw.polygon(pts, fill=(*player.color, 18))
+        odraw.polygon(pts, fill=(*player.color, 22))
 
     img.alpha_composite(overlay)
 
-    # Grid rings + spokes on top of the fills.
+    for player in players:
+        scores = radar_scores(player.raw)
+        pts = [
+            _axis_point(cx, cy, radius, i, n, scores[axis.key])
+            for i, axis in enumerate(RADAR_AXES)
+        ]
+        draw.line(pts + [pts[0]], fill=player.color, width=3)
+        for px, py in pts:
+            r = 4.5
+            draw.ellipse((px - r, py - r, px + r, py + r), fill=player.color)
+
+    # Grid rings + spokes drawn last so fills never hide them.
     for ring in (20, 40, 60, 80, 100):
         pts = [_axis_point(cx, cy, radius, i, n, float(ring)) for i in range(n)]
         draw.line(pts + [pts[0]], fill=theme.BORDER, width=1)
@@ -121,36 +139,30 @@ def _draw_radar(
         draw.line((cx, cy, tip[0], tip[1]), fill=theme.BORDER, width=1)
 
         angle = -math.pi / 2 + (2 * math.pi * i / n)
-        label_r = radius + 38
-        lx = cx + label_r * math.cos(angle)
-        ly = cy + label_r * math.sin(angle)
+        lx = cx + (radius + LABEL_OUTSET) * math.cos(angle)
+        ly = cy + (radius + LABEL_OUTSET) * math.sin(angle)
         font = theme.label(13)
         tw, th = text_size(draw, axis.label, font)
-        draw.text((lx - tw / 2, ly - th / 2), axis.label, font=font, fill=theme.MUTED_TEXT)
+        text_y = ly - th / 2
+        text_y = max(label_min_y, min(label_max_y - th, text_y))
+        text_x = lx - tw / 2
+        text_x = max(MARGIN, min(CANVAS_W - MARGIN - tw, text_x))
+        draw.text((text_x, text_y), axis.label, font=font, fill=theme.MUTED_TEXT)
 
-    # Polygon outlines + dots on top of everything.
-    for player in players:
-        scores = radar_scores(player.raw)
-        pts = [
-            _axis_point(cx, cy, radius, i, n, scores[axis.key])
-            for i, axis in enumerate(RADAR_AXES)
-        ]
-        draw.line(pts + [pts[0]], fill=player.color, width=3)
-        for px, py in pts:
-            r = 4.5
-            draw.ellipse((px - r, py - r, px + r, py + r), fill=player.color)
 
 def render_radar_card(players: list[RadarPlayer]) -> Image.Image:
     """`players` must be length 1 or 2. Colors are assigned by the caller."""
     if not players or len(players) > 2:
         raise ValueError("render_radar_card expects 1 or 2 players")
 
+    chart_r = CHART_SIZE // 2
     canvas_h = (
         HEADER_H
+        + 4
         + PANEL_H
         + CHART_TOP_PAD
         + CHART_SIZE
-        + 56  # room for axis labels outside the chart
+        + CHART_BOTTOM_PAD
         + LEGEND_H
         + FOOTER_GAP
         + MARGIN
@@ -169,40 +181,52 @@ def render_radar_card(players: list[RadarPlayer]) -> Image.Image:
 
     # Player panels.
     panel_y = HEADER_H + 4
+    panel_bottom = panel_y + PANEL_H
     if len(players) == 1:
         panel_w = CANVAS_W - 2 * MARGIN
-        _draw_player_panel(img, draw, (MARGIN, panel_y, MARGIN + panel_w, panel_y + PANEL_H), players[0])
+        _draw_player_panel(img, draw, (MARGIN, panel_y, MARGIN + panel_w, panel_bottom), players[0])
     else:
         panel_w = (CANVAS_W - 2 * MARGIN - PANEL_GAP) // 2
-        _draw_player_panel(img, draw, (MARGIN, panel_y, MARGIN + panel_w, panel_y + PANEL_H), players[0])
+        _draw_player_panel(img, draw, (MARGIN, panel_y, MARGIN + panel_w, panel_bottom), players[0])
         x1 = MARGIN + panel_w + PANEL_GAP
-        _draw_player_panel(img, draw, (x1, panel_y, x1 + panel_w, panel_y + PANEL_H), players[1])
+        _draw_player_panel(img, draw, (x1, panel_y, x1 + panel_w, panel_bottom), players[1])
 
-    # Radar chart centered below the panels.
-    chart_cy = panel_y + PANEL_H + CHART_TOP_PAD + CHART_SIZE // 2 + 10
+    # Hex tip sits CHART_TOP_PAD below the panel so "Fragging" fits in the gap.
+    chart_cy = panel_bottom + CHART_TOP_PAD + chart_r
     chart_cx = CANVAS_W // 2
-    chart_r = CHART_SIZE // 2 - 8
-    _draw_radar(img, chart_cx, chart_cy, chart_r, players)
+    legend_y = chart_cy + chart_r + CHART_BOTTOM_PAD
+
+    _draw_radar(
+        img,
+        chart_cx,
+        chart_cy,
+        chart_r,
+        players,
+        label_min_y=panel_bottom + 18,
+        label_max_y=legend_y - 8,
+    )
 
     # Legend / definitions.
-    legend_y = chart_cy + chart_r + 48
     legend_font = theme.body(12)
     blurbs = [f"{axis.label} = {axis.blurb}" for axis in RADAR_AXES]
-    # Two lines of three.
     line1 = "   ·   ".join(blurbs[:3])
     line2 = "   ·   ".join(blurbs[3:])
     for i, line in enumerate((line1, line2)):
         tw, _ = text_size(draw, line, legend_font)
         draw.text(((CANVAS_W - tw) / 2, legend_y + i * 18), line, font=legend_font, fill=theme.MUTED_TEXT)
 
-    # Color key when comparing two players.
+    # Color key when comparing two players — centered under the chart.
     if len(players) == 2:
+        key_font = theme.label(13)
+        gap = 28
+        names = [_display_name(p.username) for p in players]
+        widths = [10 + 8 + text_size(draw, name, key_font)[0] for name in names]
+        total_w = sum(widths) + gap * (len(players) - 1)
+        kx = (CANVAS_W - total_w) / 2
         key_y = legend_y + 44
-        kx = MARGIN
-        for player in players:
+        for player, name, entry_w in zip(players, names, widths):
             draw.ellipse((kx, key_y + 2, kx + 10, key_y + 12), fill=player.color)
-            name = _display_name(player.username)
-            draw.text((kx + 16, key_y), name, font=theme.label(13), fill=theme.TEXT)
-            kx += text_size(draw, name, theme.label(13))[0] + 40
+            draw.text((kx + 18, key_y), name, font=key_font, fill=theme.TEXT)
+            kx += entry_w + gap
 
     return img.convert("RGB")
