@@ -32,13 +32,6 @@ RADAR_AXES: tuple[RadarAxis, ...] = (
 )
 
 
-# Extra compact stats shown in the player panels (beyond the six radar axes).
-PANEL_EXTRAS: tuple[tuple[str, str], ...] = (
-    ("WLR", "wlr"),
-    ("GAMES", "games_played"),
-)
-
-
 def normalize(value: float, ceiling: float) -> float:
     if ceiling <= 0:
         return 0.0
@@ -55,9 +48,6 @@ def radar_scores(raw: dict) -> dict[str, float]:
 
 
 def panel_stats(raw: dict) -> list[tuple[str, str]]:
-    """Compact (label, formatted_value) pairs for a player's side panel."""
+    """Compact (label, formatted_value) pairs — one per radar axis only."""
     values = compute_all(raw)
-    rows = [(axis.short, METRICS[axis.metric_key].fmt(values[axis.metric_key])) for axis in RADAR_AXES]
-    for short, metric_key in PANEL_EXTRAS:
-        rows.append((short, METRICS[metric_key].fmt(values[metric_key])))
-    return rows
+    return [(axis.short, METRICS[axis.metric_key].fmt(values[axis.metric_key])) for axis in RADAR_AXES]
