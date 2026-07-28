@@ -55,6 +55,10 @@ def _elo_color(delta: int | None) -> tuple[int, int, int]:
     return theme.MUTED_TEXT
 
 
+WIN_GREEN = (120, 196, 150)
+LOSS_RED = (220, 120, 130)
+
+
 def _scoreline(match: dict[str, Any]) -> str:
     line = match.get("scoreline")
     if isinstance(line, str) and line.strip():
@@ -64,6 +68,72 @@ def _scoreline(match: dict[str, Any]) -> str:
     if us is not None and them is not None:
         return f"{us}-{them}"
     return "—"
+
+
+def _rounds_pair(match: dict[str, Any]) -> tuple[int, int] | None:
+    us = _as_int(match.get("roundsWonUs"))
+    them = _as_int(match.get("roundsWonThem"))
+    if us is not None and them is not None:
+        return us, them
+    line = match.get("scoreline")
+    if isinstance(line, str):
+        parts = line.replace("–", "-").replace(":", "-").split("-")
+        if len(parts) == 2:
+            try:
+                return int(parts[0].strip()), int(parts[1].strip())
+            except ValueError:
+                return None
+    return None
+
+
+def _result_letter(match: dict[str, Any]) -> str | None:
+    """Return 'W', 'L', or None if unknown."""
+    explicit = match.get("won")
+    if explicit is True:
+        return "W"
+    if explicit is False:
+        return "L"
+    pair = _rounds_pair(match)
+    if pair is None:
+        return None
+    us, them = pair
+    if us > them:
+        return "W"
+    if us < them:
+        return "L"
+    return None
+
+
+def _draw_result_elo(
+    img: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    y: float,
+    match: dict[str, Any],
+) -> None:
+    """Right side: green W / red L, then elo delta next to it."""
+    result = _result_letter(match)
+    elo = _as_int(match.get("eloDelta"))
+    elo_txt = f"{elo:+d}" if elo is not None else "—"
+
+    result_font = theme.heading(28)
+    elo_font = theme.heading(18)
+    gap = 10
+    right = CANVAS_W - MARGIN - 16
+    cy = y + ROW_H / 2 + 6
+
+    elo_w, elo_h = text_size(draw, elo_txt, elo_font)
+    elo_x = right - elo_w
+    elo_y = cy - elo_h / 2
+    draw.text((elo_x, elo_y), elo_txt, font=elo_font, fill=_elo_color(elo))
+
+    if result is None:
+        return
+
+    color = WIN_GREEN if result == "W" else LOSS_RED
+    rw, rh = text_size(draw, result, result_font)
+    rx = elo_x - gap - rw
+    ry = cy - rh / 2 - 1
+    draw.text((rx, ry), result, font=result_font, fill=color)
 
 
 def _draw_match_row(img: Image.Image, draw: ImageDraw.ImageDraw, y: float, index: int, match: dict[str, Any]) -> None:
@@ -86,7 +156,7 @@ def _draw_match_row(img: Image.Image, draw: ImageDraw.ImageDraw, y: float, index
 
     ended = _fmt_ended(match.get("endedAt"))
     ew, _ = text_size(draw, ended, theme.body(13))
-    draw.text((CANVAS_W - MARGIN - 16 - ew, y + 18), ended, font=theme.body(13), fill=theme.MUTED_TEXT)
+    draw.text((CANVAS_W - MARGIN - 16 - ew, y + 14), ended, font=theme.body(13), fill=theme.MUTED_TEXT)
 
     k = _as_int(match.get("kills"))
     a = _as_int(match.get("assists"))
@@ -108,20 +178,11 @@ def _draw_match_row(img: Image.Image, draw: ImageDraw.ImageDraw, y: float, index
 
     pts_txt = f"{pts} pts" if pts is not None else "— pts"
     score_txt = _scoreline(match)
-    elo = _as_int(match.get("eloDelta"))
-    elo_txt = f"{elo:+d}" if elo is not None else "n/a"
 
     stats_line = f"{combat}   ·   {pts_txt}   ·   {score_txt}"
     draw.text((MARGIN + 18, y + 48), stats_line, font=theme.body(14), fill=theme.MUTED_TEXT)
 
-    elo_font = theme.heading(18)
-    elw, _ = text_size(draw, elo_txt, elo_font)
-    draw.text(
-        (CANVAS_W - MARGIN - 16 - elw, y + 46),
-        elo_txt,
-        font=elo_font,
-        fill=_elo_color(elo),
-    )
+    _draw_result_elo(img, draw, y, match)
 
     ppr = match.get("pointsPerRound") if isinstance(match.get("pointsPerRound"), list) else []
     if ppr:
