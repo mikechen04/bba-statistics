@@ -33,6 +33,7 @@ MCC_API_URL = "https://api.mccisland.net/graphql"
 MCC_USER_AGENT = f"bba-statistics-discord-bot (contact: {CONTACT_INFO})"
 
 DB_PATH = DATA_DIR / "bba.sqlite3"
+MATCH_HISTORY_PATH = Path(os.getenv("MATCH_HISTORY_PATH", DATA_DIR / "battlebox-qol-match-history.json"))
 
 GAME = "BATTLE_BOX_ARENA"
 

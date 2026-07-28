@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+from pathlib import Path
 
 import discord
 import requests
@@ -13,13 +15,15 @@ import db.database as db
 from db.database import init_db
 from mcc_api.client import McApiError, client
 from mcc_api.queries import LEADERBOARD_SEED_KEYS
+from cogs.history import render_history_message
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("bba-bot")
 
 INTENTS = discord.Intents.default()
+INTENTS.message_content = True
 
-COGS = ("cogs.link", "cogs.stats", "cogs.party", "cogs.leaderboard", "cogs.radar")
+COGS = ("cogs.link", "cogs.stats", "cogs.party", "cogs.leaderboard", "cogs.radar", "cogs.history")
 
 
 class BbaBot(commands.Bot):
@@ -47,12 +51,28 @@ class BbaBot(commands.Bot):
 
     async def on_message(self, message: discord.Message) -> None:
         # Owner-only, DMs only — no slash command, so other users never see it.
-        # DM the bot one of: servers / server / members / guilds
+        # DM the bot one of:
+        # servers / server / members / guilds
+        # history / myhistory [count]
         if message.guild is not None or message.author.bot:
             return
 
         content = (message.content or "").strip().lower()
-        if content not in {"servers", "server", "members", "guilds"}:
+        history_trigger = False
+        requested_count = 5
+        if content:
+            parts = content.split()
+            head = parts[0]
+            if head in {"history", "myhistory", "matchhistory", "matches"}:
+                history_trigger = True
+                if len(parts) >= 2:
+                    try:
+                        requested_count = int(parts[1])
+                    except Exception:
+                        requested_count = 5
+                requested_count = max(1, min(10, requested_count))
+
+        if not history_trigger and content not in {"servers", "server", "members", "guilds"}:
             if not content:
                 log.warning(
                     "Got an empty DM from %s (%s) — enable Message Content Intent if this was 'servers'",
@@ -73,6 +93,24 @@ class BbaBot(commands.Bot):
                 message.author,
                 message.author.id,
             )
+            return
+
+        if history_trigger:
+            path: Path = config.MATCH_HISTORY_PATH
+            if not path.exists():
+                await message.channel.send(
+                    f"No history file found at `{path}`.\nUpload `battlebox-qol-match-history.json` to the bot server first."
+                )
+                return
+
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except Exception as exc:
+                await message.channel.send(f"Failed to read history JSON: `{exc}`")
+                return
+
+            msg = render_history_message(payload, requested_count)
+            await message.channel.send(msg)
             return
 
         log.info("servers DM from owner %s (%s)", message.author, message.author.id)

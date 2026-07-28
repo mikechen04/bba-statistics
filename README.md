@@ -10,6 +10,7 @@ A Discord bot for MCC Island **Battle Box Arena** stats.
 - **`/bbaparty [username]`** — shows who a player is partied up with as an image card, or that they're solo queuing.
 - **`/link username`** — link your Discord account to an MC username so you can omit `username` above.
 - **`/unlink`** — remove your linked account.
+- **`/myhistory [count]`** — owner-only DM command that reads uploaded local match history from your in-game mod (`count` 1-10).
 
 ## How to run
 
@@ -19,7 +20,7 @@ A Discord bot for MCC Island **Battle Box Arena** stats.
    pip install -r requirements.txt
    ```
 
-2. Copy `.env.example` to `.env` and fill in `DISCORD_TOKEN` and `MCC_API_KEY` (and optionally `CONTACT_INFO`, `DEV_GUILD_ID`).
+2. Copy `.env.example` to `.env` and fill in `DISCORD_TOKEN` and `MCC_API_KEY` (and optionally `CONTACT_INFO`, `DEV_GUILD_ID`, `OWNER_DISCORD_ID`, `MATCH_HISTORY_PATH`).
 
 3. Run it:
 
