@@ -55,6 +55,17 @@ def _elo_color(delta: int | None) -> tuple[int, int, int]:
     return theme.MUTED_TEXT
 
 
+def _scoreline(match: dict[str, Any]) -> str:
+    line = match.get("scoreline")
+    if isinstance(line, str) and line.strip():
+        return line.strip()
+    us = _as_int(match.get("roundsWonUs"))
+    them = _as_int(match.get("roundsWonThem"))
+    if us is not None and them is not None:
+        return f"{us}-{them}"
+    return "—"
+
+
 def _draw_match_row(img: Image.Image, draw: ImageDraw.ImageDraw, y: float, index: int, match: dict[str, Any]) -> None:
     box = (MARGIN, y, CANVAS_W - MARGIN, y + ROW_H)
     aa_rounded_rectangle(img, box, radius=14, fill=theme.CARD_BG, outline=theme.BORDER, width=1)
@@ -80,30 +91,27 @@ def _draw_match_row(img: Image.Image, draw: ImageDraw.ImageDraw, y: float, index
     k = _as_int(match.get("kills"))
     a = _as_int(match.get("assists"))
     d = _as_int(match.get("deaths"))
-    kp = _as_int(match.get("killParticipation"))
-    pts = _as_int(match.get("points"))
-    score = _as_int(match.get("finalScore"))
-    place = _as_int(match.get("placement"))
-    elo = _as_int(match.get("eloDelta"))
-    rounds = _as_int(match.get("roundsPlayed"))
-    ppr = match.get("pointsPerRound") if isinstance(match.get("pointsPerRound"), list) else []
-
-    if k is not None or a is not None or d is not None:
-        combat = f"{k or 0}/{a or 0}/{d or 0} K/A/D"
-    elif kp is not None:
-        combat = f"{kp} KP"
+    # Legacy fallback: old rows only had combined KP.
+    if k is None and a is None and d is None:
+        kp = _as_int(match.get("killParticipation"))
+        combat = f"{kp} KP" if kp is not None else "0/0/0 K/D/A"
     else:
-        combat = "— KP"
+        combat = f"{k or 0}/{d or 0}/{a or 0} K/D/A"
 
-    place_txt = f"#{place}" if place is not None else "—"
-    score_txt = str(score) if score is not None else "—"
-    pts_txt = str(pts) if pts is not None else "—"
+    pts = _as_int(match.get("points"))
+    # Old JSON wrongly put personal points in finalScore — only use if points missing
+    # and scoreline is absent (so we don't show a round score as "pts").
+    if pts is None and not match.get("scoreline"):
+        legacy = _as_int(match.get("finalScore"))
+        if legacy is not None and legacy <= 30:
+            pts = legacy
+
+    pts_txt = f"{pts} pts" if pts is not None else "— pts"
+    score_txt = _scoreline(match)
+    elo = _as_int(match.get("eloDelta"))
     elo_txt = f"{elo:+d}" if elo is not None else "n/a"
-    rounds_txt = f"{rounds}r" if rounds is not None else ""
 
-    stats_line = f"{combat}   ·   {pts_txt} pts   ·   place {place_txt}   ·   score {score_txt}"
-    if rounds_txt:
-        stats_line += f"   ·   {rounds_txt}"
+    stats_line = f"{combat}   ·   {pts_txt}   ·   {score_txt}"
     draw.text((MARGIN + 18, y + 48), stats_line, font=theme.body(14), fill=theme.MUTED_TEXT)
 
     elo_font = theme.heading(18)
@@ -115,11 +123,14 @@ def _draw_match_row(img: Image.Image, draw: ImageDraw.ImageDraw, y: float, index
         fill=_elo_color(elo),
     )
 
+    ppr = match.get("pointsPerRound") if isinstance(match.get("pointsPerRound"), list) else []
     if ppr:
-        ppr_txt = "rounds: " + " · ".join(str(x) for x in ppr[:10])
+        ppr_txt = "pts/round: " + " · ".join(str(x) for x in ppr[:10])
         draw.text((MARGIN + 18, y + 70), ppr_txt, font=theme.body(12), fill=theme.MUTED_TEXT)
     else:
-        draw.text((MARGIN + 18, y + 70), "rounds: —", font=theme.body(12), fill=theme.MUTED_TEXT)
+        place = _as_int(match.get("placement"))
+        place_txt = f"placement #{place}" if place is not None else ""
+        draw.text((MARGIN + 18, y + 70), place_txt or " ", font=theme.body(12), fill=theme.MUTED_TEXT)
 
 
 def render_history_card(payload: dict[str, Any], count: int = 5) -> Image.Image:
