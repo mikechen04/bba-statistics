@@ -15,7 +15,7 @@ import db.database as db
 from db.database import init_db
 from mcc_api.client import McApiError, client
 from mcc_api.queries import LEADERBOARD_SEED_KEYS
-from cogs.history import render_history_message
+from cogs.history import send_history_image
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("bba-bot")
@@ -109,8 +109,7 @@ class BbaBot(commands.Bot):
                 await message.channel.send(f"Failed to read history JSON: `{exc}`")
                 return
 
-            msg = render_history_message(payload, requested_count)
-            await message.channel.send(msg)
+            await send_history_image(message.channel, payload, requested_count)
             return
 
         log.info("servers DM from owner %s (%s)", message.author, message.author.id)
