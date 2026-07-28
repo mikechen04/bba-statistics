@@ -39,4 +39,4 @@ GAME = "BATTLE_BOX_ARENA"
 BOT_TIMEZONE = timezone(timedelta(hours=9), name="JST")
 SEASON4_KEY = "season4"
 SEASON4_LABEL = "Season 4"
-SEASON4_START_AT = datetime(2026, 7, 28, 23, 0, tzinfo=BOT_TIMEZONE)
+SEASON4_START_AT = datetime(2026, 7, 28, 19, 0, tzinfo=BOT_TIMEZONE)
