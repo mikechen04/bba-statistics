@@ -15,6 +15,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+import config
 import db.database as db
 from mcc_api.client import McApiError, PlayerNotFoundError, RateLimitedError, StatisticsPrivateError, client
 from render.leaderboard_card import render_leaderboard_card
@@ -50,8 +51,15 @@ class LeaderboardCog(commands.Cog):
     @app_commands.describe(
         stat="Which stat's leaderboard to show (start typing to search).",
         username="MCC Island username whose rank to show below the top 10 (defaults to your linked account).",
+        period="Show lifetime stats or Season 4 stats. Defaults to Season 4.",
     )
     @app_commands.autocomplete(stat=_stat_autocomplete)
+    @app_commands.choices(
+        period=[
+            app_commands.Choice(name="season4", value=config.SEASON4_KEY),
+            app_commands.Choice(name="lifetime", value="lifetime"),
+        ]
+    )
     @app_commands.allowed_installs(guilds=True, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def bbalb(
@@ -59,8 +67,11 @@ class LeaderboardCog(commands.Cog):
         interaction: discord.Interaction,
         stat: str,
         username: str | None = None,
+        period: app_commands.Choice[str] | None = None,
     ) -> None:
         await interaction.response.defer()
+        period_key = period.value if period else config.SEASON4_KEY
+        period_label = config.SEASON4_LABEL if period_key == config.SEASON4_KEY else "Lifetime"
 
         metric = METRICS.get(stat)
         if metric is None:
@@ -88,13 +99,20 @@ class LeaderboardCog(commands.Cog):
                 await interaction.followup.send(f"uhh {e}", ephemeral=True)
                 return
             await asyncio.to_thread(db.upsert_player_stats, player_stats.uuid, player_stats.username, player_stats.raw)
+            if period_key == config.SEASON4_KEY:
+                await asyncio.to_thread(
+                    db.ensure_season_baseline,
+                    player_stats.uuid,
+                    player_stats.username,
+                    player_stats.raw,
+                )
             target_uuid = player_stats.uuid
         else:
             linked = db.get_linked_account(str(interaction.user.id))
             if linked:
                 target_uuid = linked[0]
 
-        leaderboard = await asyncio.to_thread(db.compute_leaderboard, stat)
+        leaderboard = await asyncio.to_thread(db.compute_leaderboard, stat, period_key)
         top10 = leaderboard[:10]
 
         viewer_entry = None
@@ -103,10 +121,10 @@ class LeaderboardCog(commands.Cog):
             if entry and entry["rank"] > 10:
                 viewer_entry = entry
 
-        tracked_total = await asyncio.to_thread(db.qualified_player_count)
+        tracked_total = await asyncio.to_thread(db.qualified_player_count, period_key)
 
         image = await asyncio.to_thread(
-            render_leaderboard_card, metric.label, top10, viewer_entry, tracked_total, metric.fmt
+            render_leaderboard_card, metric.label, top10, viewer_entry, tracked_total, metric.fmt, period_label
         )
 
         buffer = io.BytesIO()

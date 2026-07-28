@@ -40,6 +40,7 @@ class BbaBot(commands.Bot):
             log.info("Synced %d command(s) globally", len(synced))
 
         self.seed_leaderboards.start()
+        self.activate_season4.start()
 
     async def on_ready(self) -> None:
         log.info("Logged in as %s (id=%s)", self.user, self.user.id if self.user else "?")
@@ -138,8 +139,38 @@ class BbaBot(commands.Bot):
                 await asyncio.to_thread(db.upsert_player_stats, player.uuid, player.username, player.raw)
             log.info("Leaderboard seed: cached %d player(s) from %s", len(players), stat_key)
 
+    @tasks.loop(minutes=1)
+    async def activate_season4(self) -> None:
+        """Once Season 4 starts, freeze a baseline snapshot for the tracked pool."""
+        if not await asyncio.to_thread(db.season_needs_activation, config.SEASON4_KEY):
+            return
+
+        total_seeded = 0
+        for stat_key in LEADERBOARD_SEED_KEYS:
+            try:
+                players = await asyncio.to_thread(client.get_leaderboard, stat_key)
+            except McApiError:
+                log.exception("Season 4 activation seed failed for stat %s", stat_key)
+                continue
+            total_seeded += len(players)
+            for player in players:
+                await asyncio.to_thread(db.upsert_player_stats, player.uuid, player.username, player.raw)
+
+        frozen = await asyncio.to_thread(db.capture_season_baselines_for_all, config.SEASON4_KEY)
+        await asyncio.to_thread(db.mark_season_activated, config.SEASON4_KEY)
+        log.info(
+            "Season 4 activated at %s; seeded %d player rows and froze %d season baselines",
+            config.SEASON4_START_AT.isoformat(),
+            total_seeded,
+            frozen,
+        )
+
     @seed_leaderboards.before_loop
     async def _before_seed_leaderboards(self) -> None:
+        await self.wait_until_ready()
+
+    @activate_season4.before_loop
+    async def _before_activate_season4(self) -> None:
         await self.wait_until_ready()
 
 

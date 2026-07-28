@@ -9,6 +9,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+import config
 import db.database as db
 from cogs.common import UserFacingError, resolve_target_username
 from mcc_api.client import McApiError, PlayerNotFoundError, RateLimitedError, StatisticsPrivateError, client
@@ -26,12 +27,17 @@ class StatsCog(commands.Cog):
     @app_commands.describe(
         username="MCC Island username to look up (defaults to your linked account).",
         display="Show ranks as position numbers (#1) or percentiles (0.1%). Defaults to numbers.",
+        period="Show lifetime stats or Season 4 stats. Defaults to Season 4.",
     )
     @app_commands.choices(
         display=[
             app_commands.Choice(name="numbers", value="number"),
             app_commands.Choice(name="percentile", value="percentile"),
-        ]
+        ],
+        period=[
+            app_commands.Choice(name="season4", value=config.SEASON4_KEY),
+            app_commands.Choice(name="lifetime", value="lifetime"),
+        ],
     )
     @app_commands.allowed_installs(guilds=True, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
@@ -40,9 +46,12 @@ class StatsCog(commands.Cog):
         interaction: discord.Interaction,
         username: str | None = None,
         display: app_commands.Choice[str] | None = None,
+        period: app_commands.Choice[str] | None = None,
     ) -> None:
         await interaction.response.defer()
         rank_mode = display.value if display else "number"
+        period_key = period.value if period else config.SEASON4_KEY
+        period_label = config.SEASON4_LABEL if period_key == config.SEASON4_KEY else "Lifetime"
 
         try:
             target = await resolve_target_username(interaction, username)
@@ -67,8 +76,11 @@ class StatsCog(commands.Cog):
             return
 
         await asyncio.to_thread(db.upsert_player_stats, player_stats.uuid, player_stats.username, player_stats.raw)
-        percentiles = await asyncio.to_thread(db.compute_percentiles, player_stats.uuid)
-        tracked_total = await asyncio.to_thread(db.qualified_player_count)
+        if period_key == config.SEASON4_KEY:
+            await asyncio.to_thread(db.ensure_season_baseline, player_stats.uuid, player_stats.username, player_stats.raw)
+        raw_for_card = await asyncio.to_thread(db.get_player_raw, player_stats.uuid, period_key)
+        percentiles = await asyncio.to_thread(db.compute_percentiles, player_stats.uuid, period_key)
+        tracked_total = await asyncio.to_thread(db.qualified_player_count, period_key)
 
         display_username = theme.DISPLAY_NAME_OVERRIDES.get(player_stats.username.lower(), player_stats.username)
 
@@ -76,10 +88,11 @@ class StatsCog(commands.Cog):
             render_stats_card,
             display_username,
             player_stats.uuid,
-            player_stats.raw,
+            raw_for_card,
             percentiles,
             tracked_total,
             rank_mode,
+            period_label,
         )
 
         buffer = io.BytesIO()

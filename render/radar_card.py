@@ -8,7 +8,7 @@ from PIL import Image, ImageDraw
 
 from render import theme
 from render.avatar import get_avatar
-from render.shapes import rounded_crop, text_size
+from render.shapes import aa_ellipse, aa_line, aa_polygon, aa_rounded_rectangle, rounded_crop, text_size
 from stats.radar import RADAR_AXES, panel_stats, radar_scores
 
 CANVAS_W = 1000
@@ -25,6 +25,7 @@ CHART_SIZE = 400
 CHART_BOTTOM_PAD = LABEL_OUTSET + 28
 LEGEND_H = 88
 FOOTER_GAP = 18
+RADAR_AA_SCALE = 6
 
 
 @dataclass
@@ -53,10 +54,10 @@ def _draw_player_panel(
     player: RadarPlayer,
 ) -> None:
     x0, y0, x1, y1 = box
-    draw.rounded_rectangle(box, radius=14, fill=theme.CARD_BG, outline=theme.BORDER, width=1)
+    aa_rounded_rectangle(img, box, radius=14, fill=theme.CARD_BG, outline=theme.BORDER, width=1, scale=5)
 
     # Color tick matching this player's radar polygon.
-    draw.rounded_rectangle((x0 + 16, y0 + 18, x0 + 20, y0 + 36), radius=2, fill=player.color)
+    aa_rounded_rectangle(img, (x0 + 16, y0 + 18, x0 + 20, y0 + 36), radius=2, fill=player.color, scale=5)
 
     avatar = rounded_crop(get_avatar(player.uuid, size=36), radius=8)
     img.paste(avatar, (x0 + 30, y0 + 16), avatar)
@@ -97,8 +98,6 @@ def _draw_radar(
     label_min_y: float,
     label_max_y: float,
 ) -> None:
-    overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
-    odraw = ImageDraw.Draw(overlay)
     draw = ImageDraw.Draw(img)
     n = len(RADAR_AXES)
 
@@ -109,9 +108,7 @@ def _draw_radar(
             _axis_point(cx, cy, radius, i, n, scores[axis.key])
             for i, axis in enumerate(RADAR_AXES)
         ]
-        odraw.polygon(pts, fill=(*player.color, 22))
-
-    img.alpha_composite(overlay)
+        aa_polygon(img, pts, fill=(*player.color, 22), scale=RADAR_AA_SCALE)
 
     for player in players:
         scores = radar_scores(player.raw)
@@ -119,15 +116,15 @@ def _draw_radar(
             _axis_point(cx, cy, radius, i, n, scores[axis.key])
             for i, axis in enumerate(RADAR_AXES)
         ]
-        draw.line(pts + [pts[0]], fill=player.color, width=3)
+        aa_line(img, pts + [pts[0]], fill=player.color, width=3, scale=RADAR_AA_SCALE)
         for px, py in pts:
             r = 4.5
-            draw.ellipse((px - r, py - r, px + r, py + r), fill=player.color)
+            aa_ellipse(img, (px - r, py - r, px + r, py + r), fill=player.color, scale=RADAR_AA_SCALE)
 
     # Grid rings + spokes drawn last so fills never hide them.
     for ring in (20, 40, 60, 80, 100):
         pts = [_axis_point(cx, cy, radius, i, n, float(ring)) for i in range(n)]
-        draw.line(pts + [pts[0]], fill=theme.BORDER, width=1)
+        aa_line(img, pts + [pts[0]], fill=theme.BORDER, width=1, scale=RADAR_AA_SCALE)
         if ring < 100:
             label = str(ring)
             lf = theme.body(11)
@@ -136,7 +133,7 @@ def _draw_radar(
 
     for i, axis in enumerate(RADAR_AXES):
         tip = _axis_point(cx, cy, radius, i, n, 100.0)
-        draw.line((cx, cy, tip[0], tip[1]), fill=theme.BORDER, width=1)
+        aa_line(img, (cx, cy, tip[0], tip[1]), fill=theme.BORDER, width=1, scale=RADAR_AA_SCALE)
 
         angle = -math.pi / 2 + (2 * math.pi * i / n)
         lx = cx + (radius + LABEL_OUTSET) * math.cos(angle)
@@ -225,7 +222,7 @@ def render_radar_card(players: list[RadarPlayer]) -> Image.Image:
         kx = (CANVAS_W - total_w) / 2
         key_y = legend_y + 44
         for player, name, entry_w in zip(players, names, widths):
-            draw.ellipse((kx, key_y + 2, kx + 10, key_y + 12), fill=player.color)
+            aa_ellipse(img, (kx, key_y + 2, kx + 10, key_y + 12), fill=player.color, scale=5)
             draw.text((kx + 18, key_y), name, font=key_font, fill=theme.TEXT)
             kx += entry_w + gap
 

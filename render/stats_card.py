@@ -12,7 +12,17 @@ from PIL import Image, ImageDraw
 
 from render import theme
 from render.avatar import get_avatar
-from render.shapes import build_gradient_bar, draw_gradient_text, draw_star, fit_font, rounded_crop, text_size
+from render.shapes import (
+    aa_line,
+    aa_rounded_mask,
+    aa_rounded_rectangle,
+    build_gradient_bar,
+    draw_gradient_text,
+    draw_star,
+    fit_font,
+    rounded_crop,
+    text_size,
+)
 from stats.derive import METRICS, compute_all
 
 # Individual stat thresholds behind MCC Island's "Expert" LFG tier. Being accepted
@@ -91,7 +101,7 @@ class _RenderContext:
     percentiles: dict[str, dict]
 
 
-def _draw_rank_badge(draw: ImageDraw.ImageDraw, x_right: int, y: int, text: str) -> None:
+def _draw_rank_badge(img: Image.Image, draw: ImageDraw.ImageDraw, x_right: int, y: int, text: str) -> None:
     font = theme.label(15)
     pad_x, pad_y = 10, 5
     # Center on the glyphs' actual ink extents (not the font's ascender-based
@@ -99,11 +109,11 @@ def _draw_rank_badge(draw: ImageDraw.ImageDraw, x_right: int, y: int, text: str)
     ink_left, ink_top, ink_right, ink_bottom = draw.textbbox((0, 0), text, font=font)
     w, h = ink_right - ink_left, ink_bottom - ink_top
     box = (x_right - w - 2 * pad_x, y, x_right, y + h + 2 * pad_y)
-    draw.rounded_rectangle(box, radius=(h + 2 * pad_y) // 2, fill=theme.MAIN_SOFT)
+    aa_rounded_rectangle(img, box, radius=(h + 2 * pad_y) // 2, fill=theme.MAIN_SOFT)
     draw.text((box[0] + pad_x - ink_left, box[1] + pad_y - ink_top), text, font=font, fill=theme.MAIN)
 
 
-def _draw_hours_badge(draw: ImageDraw.ImageDraw, x_left: float, y_center: float, text: str) -> None:
+def _draw_hours_badge(img: Image.Image, draw: ImageDraw.ImageDraw, x_left: float, y_center: float, text: str) -> None:
     """Draws a small pill with playtime info, growing rightward from x_left and
     vertically centered on y_center (matched to the username's ink extents)."""
     font = theme.label(14)
@@ -112,18 +122,19 @@ def _draw_hours_badge(draw: ImageDraw.ImageDraw, x_left: float, y_center: float,
     w, h = ink_right - ink_left, ink_bottom - ink_top
     box_h = h + 2 * pad_y
     box = (x_left, y_center - box_h / 2, x_left + w + 2 * pad_x, y_center + box_h / 2)
-    draw.rounded_rectangle(box, radius=box_h / 2, fill=theme.MAIN_SOFT)
+    aa_rounded_rectangle(img, box, radius=box_h / 2, fill=theme.MAIN_SOFT)
     draw.text((box[0] + pad_x - ink_left, box[1] + pad_y - ink_top), text, font=font, fill=theme.MAIN)
 
 
-def _draw_section_label(draw: ImageDraw.ImageDraw, y: int, text: str) -> None:
+def _draw_section_label(img: Image.Image, draw: ImageDraw.ImageDraw, y: int, text: str) -> None:
     tick_h = 16
     tick_y = y + (SECTION_LABEL_H - tick_h) // 2
-    draw.rounded_rectangle((MARGIN, tick_y, MARGIN + 4, tick_y + tick_h), radius=2, fill=theme.MAIN)
+    aa_rounded_rectangle(img, (MARGIN, tick_y, MARGIN + 4, tick_y + tick_h), radius=2, fill=theme.MAIN)
     draw.text((MARGIN + 14, y + 2), text.upper(), font=theme.label(15), fill=theme.MUTED_TEXT)
 
 
 def _draw_stat_box(
+    img: Image.Image,
     draw: ImageDraw.ImageDraw,
     x: int,
     y: int,
@@ -136,7 +147,7 @@ def _draw_stat_box(
 ) -> None:
     main_key, sub_keys = spec
     box = (x, y, x + w, y + h)
-    draw.rounded_rectangle(box, radius=16, fill=theme.CARD_BG, outline=theme.BORDER, width=1)
+    aa_rounded_rectangle(img, box, radius=16, fill=theme.CARD_BG, outline=theme.BORDER, width=1)
 
     pad = 16
     inner_x = x + pad
@@ -155,7 +166,7 @@ def _draw_stat_box(
     draw.text((inner_x, cur_y), label_text, font=label_font, fill=theme.MUTED_TEXT)
 
     if rank_text_main:
-        _draw_rank_badge(draw, x + w - pad, cur_y - 4, rank_text_main)
+        _draw_rank_badge(img, draw, x + w - pad, cur_y - 4, rank_text_main)
 
     cur_y += text_size(draw, "A", theme.label(13))[1] + 10
 
@@ -171,7 +182,7 @@ def _draw_stat_box(
         star_r = value_font_size * 0.24
         star_cx = ink_right + 12 + star_r
         star_cy = (ink_top + ink_bottom) / 2
-        draw_star(draw, star_cx, star_cy, star_r, theme.GOLD)
+        draw_star(img, star_cx, star_cy, star_r, theme.GOLD)
 
     cur_y += value_h + 14
 
@@ -205,7 +216,7 @@ def _draw_stat_box(
             # Center on the actual ink extents of the value text at its final drawn
             # position, so the star lines up with the digits rather than the font box.
             ink_top, ink_bottom = draw.textbbox((0, cur_y), sub_value_text, font=sub_val_font)[1::2]
-            draw_star(draw, right_edge - star_r, (ink_top + ink_bottom) / 2, star_r, theme.GOLD)
+            draw_star(img, right_edge - star_r, (ink_top + ink_bottom) / 2, star_r, theme.GOLD)
             right_edge -= star_reserved
 
         draw.text((right_edge - value_w, cur_y), sub_value_text, font=sub_val_font, fill=theme.TEXT)
@@ -213,6 +224,7 @@ def _draw_stat_box(
 
 
 def _draw_row(
+    img: Image.Image,
     draw: ImageDraw.ImageDraw,
     y: int,
     h: int,
@@ -223,13 +235,15 @@ def _draw_row(
 ) -> None:
     for col_idx, spec in enumerate(specs):
         x = MARGIN + col_idx * (COL_W + GRID_GAP)
-        _draw_stat_box(draw, x, y, COL_W, h, spec, ctx, value_font_size=value_font_size, rank_display=rank_display)
+        _draw_stat_box(
+            img, draw, x, y, COL_W, h, spec, ctx, value_font_size=value_font_size, rank_display=rank_display
+        )
 
 
 def _draw_damage_breakdown(img: Image.Image, y: int, ctx: _RenderContext, rank_display: str = "number") -> None:
     draw = ImageDraw.Draw(img)
     box = (MARGIN, y, MARGIN + CONTENT_W, y + DAMAGE_BAR_H)
-    draw.rounded_rectangle(box, radius=16, fill=theme.CARD_BG, outline=theme.BORDER, width=1)
+    aa_rounded_rectangle(img, box, radius=16, fill=theme.CARD_BG, outline=theme.BORDER, width=1)
 
     pad = 20
     melee_pct = max(min(ctx.values["melee_pct"], 100.0), 0.0)
@@ -249,8 +263,7 @@ def _draw_damage_breakdown(img: Image.Image, y: int, ctx: _RenderContext, rank_d
     # A single smoothly-blended gradient bar (rather than hard-edged blocks) so
     # adjacent colors (melee blue -> ranged pink -> other gray) flow into each other.
     gradient = build_gradient_bar(bar_w, bar_h, segments)
-    mask = Image.new("L", (bar_w, bar_h), 0)
-    ImageDraw.Draw(mask).rounded_rectangle((0, 0, bar_w, bar_h), radius=bar_h // 2, fill=255)
+    mask = aa_rounded_mask((bar_w, bar_h), radius=bar_h // 2)
     img.paste(gradient, (bar_x, bar_y), mask)
 
     legend_y = bar_y + bar_h + 18
@@ -259,7 +272,7 @@ def _draw_damage_breakdown(img: Image.Image, y: int, ctx: _RenderContext, rank_d
     value_font = theme.label(14)
 
     def _legend_entry(lx: int, color, label_text: str, value_text: str, rank_key: str | None) -> int:
-        draw.rounded_rectangle((lx, legend_y + 3, lx + swatch, legend_y + 3 + swatch), radius=3, fill=color)
+        aa_rounded_rectangle(img, (lx, legend_y + 3, lx + swatch, legend_y + 3 + swatch), radius=3, fill=color)
         lx += swatch + 8
         draw.text((lx, legend_y), label_text, font=legend_font, fill=theme.MUTED_TEXT)
         lx += text_size(draw, label_text, legend_font)[0] + 8
@@ -286,6 +299,7 @@ def render_stats_card(
     percentiles: dict,
     tracked_total: int,
     rank_display: str = "number",
+    period_label: str = "Lifetime",
 ) -> Image.Image:
     ctx = _RenderContext(values=compute_all(raw), percentiles=percentiles)
 
@@ -317,8 +331,12 @@ def render_stats_card(
     avatar = rounded_crop(get_avatar(uuid, size=avatar_size), radius=18)
     avatar_x, avatar_y = MARGIN, 30
     img.paste(avatar, (avatar_x, avatar_y), avatar)
-    draw.rounded_rectangle(
-        (avatar_x, avatar_y, avatar_x + avatar_size, avatar_y + avatar_size), radius=18, outline=theme.BORDER, width=2
+    aa_rounded_rectangle(
+        img,
+        (avatar_x, avatar_y, avatar_x + avatar_size, avatar_y + avatar_size),
+        radius=18,
+        outline=theme.BORDER,
+        width=2,
     )
 
     name_x = avatar_x + avatar_size + 20
@@ -342,11 +360,11 @@ def render_stats_card(
         cursor_x = heart_x + h_right
 
     hours_text = f"{METRICS['hours_played'].fmt(ctx.values.get('hours_played', 0.0))} played"
-    _draw_hours_badge(draw, cursor_x + 14, name_cy, hours_text)
+    _draw_hours_badge(img, draw, cursor_x + 14, name_cy, hours_text)
 
     draw.text(
         (name_x, avatar_y + 44),
-        "Battle Box Arena \u00b7 Lifetime Statistics",
+        f"Battle Box Arena · {period_label} Statistics",
         font=theme.body(16),
         fill=theme.MUTED_TEXT,
     )
@@ -355,24 +373,27 @@ def render_stats_card(
     brand_font = theme.heading(18)
     bw, _ = text_size(draw, brand_text, brand_font)
     draw.text((CANVAS_W - MARGIN - bw, 34), brand_text, font=brand_font, fill=theme.MAIN)
+    period_brand = period_label.upper()
+    pbw, _ = text_size(draw, period_brand, theme.label(12))
+    draw.text((CANVAS_W - MARGIN - pbw, 58), period_brand, font=theme.label(12), fill=theme.MUTED_TEXT)
 
-    draw.line((MARGIN, HEADER_H, CANVAS_W - MARGIN, HEADER_H), fill=theme.BORDER, width=1)
+    aa_line(img, (MARGIN, HEADER_H, CANVAS_W - MARGIN, HEADER_H), fill=theme.BORDER, width=1)
 
     y = HEADER_H + 22
-    _draw_row(draw, y, OVERVIEW_H, OVERVIEW_ROW, ctx, value_font_size=26, rank_display=rank_display)
+    _draw_row(img, draw, y, OVERVIEW_H, OVERVIEW_ROW, ctx, value_font_size=26, rank_display=rank_display)
     y += OVERVIEW_H + GRID_GAP
 
-    _draw_section_label(draw, y, "Combat")
+    _draw_section_label(img, draw, y, "Combat")
     y += SECTION_LABEL_H
-    _draw_row(draw, y, ROW_H, COMBAT_ROW, ctx, rank_display=rank_display)
+    _draw_row(img, draw, y, ROW_H, COMBAT_ROW, ctx, rank_display=rank_display)
     y += ROW_H + GRID_GAP
 
-    _draw_section_label(draw, y, "Placements & Objectives")
+    _draw_section_label(img, draw, y, "Placements & Objectives")
     y += SECTION_LABEL_H
-    _draw_row(draw, y, ROW_H, PLACEMENTS_ROW, ctx, rank_display=rank_display)
+    _draw_row(img, draw, y, ROW_H, PLACEMENTS_ROW, ctx, rank_display=rank_display)
     y += ROW_H + GRID_GAP
 
-    _draw_section_label(draw, y, "Damage Breakdown")
+    _draw_section_label(img, draw, y, "Damage Breakdown")
     y += SECTION_LABEL_H
     _draw_damage_breakdown(img, y, ctx, rank_display=rank_display)
     y += DAMAGE_BAR_H + 22
@@ -387,7 +408,7 @@ def render_stats_card(
     legend_w, legend_h = text_size(draw, legend_text, legend_font)
     legend_star_r = 6
     legend_x = CANVAS_W - MARGIN - legend_w
-    draw_star(draw, legend_x - legend_star_r - 8, y + legend_h / 2, legend_star_r, theme.GOLD)
+    draw_star(img, legend_x - legend_star_r - 8, y + legend_h / 2, legend_star_r, theme.GOLD)
     draw.text((legend_x, y), legend_text, font=legend_font, fill=theme.MUTED_TEXT)
 
     note_text = "I love love love Celybi <3"

@@ -9,7 +9,7 @@ from PIL import Image, ImageDraw
 
 from render import theme
 from render.avatar import get_avatar
-from render.shapes import rounded_crop, text_size
+from render.shapes import aa_ellipse, aa_line, aa_rounded_rectangle, rounded_crop, text_size
 
 CANVAS_W = 720
 MARGIN = 28
@@ -23,7 +23,7 @@ AVATAR_SIZE = 40
 RANK_COL_W = 64
 
 
-def _draw_rank_pill(draw: ImageDraw.ImageDraw, col_left: float, cy: float, text: str, bg, fg) -> None:
+def _draw_rank_pill(img: Image.Image, draw: ImageDraw.ImageDraw, col_left: float, cy: float, text: str, bg, fg) -> None:
     font = theme.label(16)
     pad_x, pad_y = 12, 6
     ink_left, ink_top, ink_right, ink_bottom = draw.textbbox((0, 0), text, font=font)
@@ -31,7 +31,7 @@ def _draw_rank_pill(draw: ImageDraw.ImageDraw, col_left: float, cy: float, text:
     pill_w, pill_h = w + 2 * pad_x, h + 2 * pad_y
     cx = col_left + RANK_COL_W / 2
     box = (cx - pill_w / 2, cy - pill_h / 2, cx + pill_w / 2, cy + pill_h / 2)
-    draw.rounded_rectangle(box, radius=pill_h / 2, fill=bg)
+    aa_rounded_rectangle(img, box, radius=pill_h / 2, fill=bg)
     draw.text((box[0] + pad_x - ink_left, box[1] + pad_y - ink_top), text, font=font, fill=fg)
 
 
@@ -45,12 +45,12 @@ def _draw_entry_row(
 ) -> None:
     box = (MARGIN, y, CANVAS_W - MARGIN, y + ROW_H)
     bg = theme.ACCENT_SOFT if highlight else theme.CARD_BG
-    draw.rounded_rectangle(box, radius=14, fill=bg, outline=theme.BORDER, width=1)
+    aa_rounded_rectangle(img, box, radius=14, fill=bg, outline=theme.BORDER, width=1)
 
     cy = y + ROW_H / 2
     pill_bg = theme.ACCENT_DARK if highlight else theme.MAIN_SOFT
     pill_fg = theme.BACKGROUND if highlight else theme.MAIN
-    _draw_rank_pill(draw, MARGIN + 14, cy, f"#{entry['rank']}", pill_bg, pill_fg)
+    _draw_rank_pill(img, draw, MARGIN + 14, cy, f"#{entry['rank']}", pill_bg, pill_fg)
 
     avatar = rounded_crop(get_avatar(entry["uuid"], size=AVATAR_SIZE), radius=10)
     avatar_x = MARGIN + 14 + RANK_COL_W + 14
@@ -83,6 +83,7 @@ def render_leaderboard_card(
     viewer_entry: dict | None,
     tracked_total: int,
     value_fmt: Callable[[float], str],
+    period_label: str = "Lifetime",
 ) -> Image.Image:
     row_count = len(top_entries)
     rows_h = (row_count * ROW_H + max(row_count - 1, 0) * ROW_GAP) if row_count else 28
@@ -95,14 +96,17 @@ def render_leaderboard_card(
     draw.rectangle((0, 0, CANVAS_W, 6), fill=theme.ACCENT)
 
     draw.text((MARGIN, 26), stat_label, font=theme.heading(26), fill=theme.TEXT)
-    draw.text((MARGIN, 60), "Battle Box Arena \u00b7 Top 10", font=theme.body(14), fill=theme.MUTED_TEXT)
+    draw.text((MARGIN, 60), f"Battle Box Arena · {period_label} Top 10", font=theme.body(14), fill=theme.MUTED_TEXT)
 
     brand_text = "BBA STATS"
     brand_font = theme.heading(16)
     bw, _ = text_size(draw, brand_text, brand_font)
     draw.text((CANVAS_W - MARGIN - bw, 30), brand_text, font=brand_font, fill=theme.MAIN)
+    period_brand = period_label.upper()
+    pbw, _ = text_size(draw, period_brand, theme.label(12))
+    draw.text((CANVAS_W - MARGIN - pbw, 52), period_brand, font=theme.label(12), fill=theme.MUTED_TEXT)
 
-    draw.line((MARGIN, HEADER_H, CANVAS_W - MARGIN, HEADER_H), fill=theme.BORDER, width=1)
+    aa_line(img, (MARGIN, HEADER_H, CANVAS_W - MARGIN, HEADER_H), fill=theme.BORDER, width=1)
 
     y = HEADER_H + 14
     if not top_entries:
@@ -131,7 +135,7 @@ def render_leaderboard_card(
         dots_cy = y - SEPARATOR_H / 2
         for i in range(-1, 2):
             dcy = dots_cy + i * dot_gap
-            draw.ellipse((dot_cx - dot_r, dcy - dot_r, dot_cx + dot_r, dcy + dot_r), fill=theme.MUTED_TEXT)
+            aa_ellipse(img, (dot_cx - dot_r, dcy - dot_r, dot_cx + dot_r, dcy + dot_r), fill=theme.MUTED_TEXT)
         _draw_entry_row(img, draw, y, viewer_entry, value_fmt, highlight=True)
         y += ROW_H
 

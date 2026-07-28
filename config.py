@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -34,3 +35,8 @@ MCC_USER_AGENT = f"bba-statistics-discord-bot (contact: {CONTACT_INFO})"
 DB_PATH = DATA_DIR / "bba.sqlite3"
 
 GAME = "BATTLE_BOX_ARENA"
+
+BOT_TIMEZONE = timezone(timedelta(hours=9), name="JST")
+SEASON4_KEY = "season4"
+SEASON4_LABEL = "Season 4"
+SEASON4_START_AT = datetime(2026, 7, 28, 23, 0, tzinfo=BOT_TIMEZONE)
