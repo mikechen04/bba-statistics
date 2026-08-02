@@ -98,14 +98,7 @@ class LeaderboardCog(commands.Cog):
                 log.exception("Error fetching player stats for /bbalb")
                 await interaction.followup.send(f"uhh {e}", ephemeral=True)
                 return
-            await asyncio.to_thread(db.upsert_player_stats, player_stats.uuid, player_stats.username, player_stats.raw)
-            if period_key == config.SEASON4_KEY:
-                await asyncio.to_thread(
-                    db.ensure_season_baseline,
-                    player_stats.uuid,
-                    player_stats.username,
-                    player_stats.raw,
-                )
+            await asyncio.to_thread(db.track_player_stats, player_stats.uuid, player_stats.username, player_stats.raw)
             target_uuid = player_stats.uuid
         else:
             linked = db.get_linked_account(str(interaction.user.id))
@@ -122,9 +115,17 @@ class LeaderboardCog(commands.Cog):
                 viewer_entry = entry
 
         tracked_total = await asyncio.to_thread(db.qualified_player_count, period_key)
+        min_games = db.min_games_for_ranking(period_key)
 
         image = await asyncio.to_thread(
-            render_leaderboard_card, metric.label, top10, viewer_entry, tracked_total, metric.fmt, period_label
+            render_leaderboard_card,
+            metric.label,
+            top10,
+            viewer_entry,
+            tracked_total,
+            metric.fmt,
+            period_label,
+            min_games,
         )
 
         buffer = io.BytesIO()

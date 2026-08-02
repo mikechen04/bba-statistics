@@ -300,6 +300,7 @@ def render_stats_card(
     tracked_total: int,
     rank_display: str = "number",
     period_label: str = "Lifetime",
+    min_games: int = 100,
 ) -> Image.Image:
     ctx = _RenderContext(values=compute_all(raw), percentiles=percentiles)
 
@@ -399,7 +400,8 @@ def render_stats_card(
     y += DAMAGE_BAR_H + 22
 
     footer_text = (
-        f"Ranks and Percentiles are calculated among {tracked_total:,} player(s) with 100+ games tracked by this bot."
+        f"Ranks and Percentiles are calculated among {tracked_total:,} player(s) "
+        f"with {min_games}+ games tracked by this bot."
     )
     draw.text((MARGIN, y), footer_text, font=theme.body(13), fill=theme.MUTED_TEXT)
 

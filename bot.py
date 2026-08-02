@@ -173,7 +173,7 @@ class BbaBot(commands.Bot):
                 log.exception("Leaderboard seed failed for stat %s", stat_key)
                 continue
             for player in players:
-                await asyncio.to_thread(db.upsert_player_stats, player.uuid, player.username, player.raw)
+                await asyncio.to_thread(db.track_player_stats, player.uuid, player.username, player.raw)
             log.info("Leaderboard seed: cached %d player(s) from %s", len(players), stat_key)
 
     @tasks.loop(minutes=1)
@@ -191,7 +191,7 @@ class BbaBot(commands.Bot):
                 continue
             total_seeded += len(players)
             for player in players:
-                await asyncio.to_thread(db.upsert_player_stats, player.uuid, player.username, player.raw)
+                await asyncio.to_thread(db.track_player_stats, player.uuid, player.username, player.raw)
 
         frozen = await asyncio.to_thread(db.capture_season_baselines_for_all, config.SEASON4_KEY)
         await asyncio.to_thread(db.mark_season_activated, config.SEASON4_KEY)

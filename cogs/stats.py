@@ -75,12 +75,11 @@ class StatsCog(commands.Cog):
             await interaction.followup.send(f"uhh {e}", ephemeral=True)
             return
 
-        await asyncio.to_thread(db.upsert_player_stats, player_stats.uuid, player_stats.username, player_stats.raw)
-        if period_key == config.SEASON4_KEY:
-            await asyncio.to_thread(db.ensure_season_baseline, player_stats.uuid, player_stats.username, player_stats.raw)
+        await asyncio.to_thread(db.track_player_stats, player_stats.uuid, player_stats.username, player_stats.raw)
         raw_for_card = await asyncio.to_thread(db.get_player_raw, player_stats.uuid, period_key)
         percentiles = await asyncio.to_thread(db.compute_percentiles, player_stats.uuid, period_key)
         tracked_total = await asyncio.to_thread(db.qualified_player_count, period_key)
+        min_games = db.min_games_for_ranking(period_key)
 
         display_username = theme.DISPLAY_NAME_OVERRIDES.get(player_stats.username.lower(), player_stats.username)
 
@@ -93,6 +92,7 @@ class StatsCog(commands.Cog):
             tracked_total,
             rank_mode,
             period_label,
+            min_games,
         )
 
         buffer = io.BytesIO()

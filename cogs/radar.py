@@ -32,7 +32,7 @@ async def _fetch_player(username: str):
         log.exception("Error fetching player stats for /bbaradar")
         raise UserFacingError(f"uhh {e}") from e
 
-    await asyncio.to_thread(db.upsert_player_stats, player_stats.uuid, player_stats.username, player_stats.raw)
+    await asyncio.to_thread(db.track_player_stats, player_stats.uuid, player_stats.username, player_stats.raw)
     return player_stats
 
 

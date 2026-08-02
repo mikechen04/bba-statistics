@@ -32,7 +32,7 @@ async def _cache_party_members(members: list[dict]) -> None:
             stats = await asyncio.to_thread(client.get_player_stats, username)
         except McApiError:
             continue
-        await asyncio.to_thread(db.upsert_player_stats, stats.uuid, stats.username, stats.raw)
+        await asyncio.to_thread(db.track_player_stats, stats.uuid, stats.username, stats.raw)
 
 
 class PartyCog(commands.Cog):

@@ -84,6 +84,7 @@ def render_leaderboard_card(
     tracked_total: int,
     value_fmt: Callable[[float], str],
     period_label: str = "Lifetime",
+    min_games: int = 100,
 ) -> Image.Image:
     row_count = len(top_entries)
     rows_h = (row_count * ROW_H + max(row_count - 1, 0) * ROW_GAP) if row_count else 28
@@ -140,7 +141,9 @@ def render_leaderboard_card(
         y += ROW_H
 
     y += FOOTER_GAP
-    footer_text = f"Ranks are calculated among {tracked_total:,} player(s) with 100+ games tracked by this bot."
+    footer_text = (
+        f"Ranks are calculated among {tracked_total:,} player(s) with {min_games}+ games tracked by this bot."
+    )
     draw.text((MARGIN, y), footer_text, font=theme.body(13), fill=theme.MUTED_TEXT)
 
     return img
