@@ -9,7 +9,7 @@ from PIL import Image, ImageDraw
 from render import theme
 from render.avatar import get_avatar
 from render.shapes import aa_ellipse, aa_line, aa_polygon, aa_rounded_rectangle, rounded_crop, text_size
-from stats.radar import RADAR_AXES, panel_stats, radar_scores
+from stats.radar import RADAR_AXES, panel_stats, radar_scores_for_players
 
 CANVAS_W = 1000
 MARGIN = 28
@@ -23,7 +23,7 @@ CHART_TOP_GAP = 40
 CHART_TOP_PAD = LABEL_OUTSET + CHART_TOP_GAP
 CHART_SIZE = 400
 CHART_BOTTOM_PAD = LABEL_OUTSET + 28
-LEGEND_H = 88
+LEGEND_H = 108
 FOOTER_GAP = 18
 RADAR_AA_SCALE = 6
 
@@ -95,6 +95,7 @@ def _draw_radar(
     cy: int,
     radius: int,
     players: list[RadarPlayer],
+    score_maps: list[dict[str, float]],
     label_min_y: float,
     label_max_y: float,
 ) -> None:
@@ -102,16 +103,14 @@ def _draw_radar(
     n = len(RADAR_AXES)
 
     # Fills first (light), then outlines, then grid on top so rings stay visible.
-    for player in players:
-        scores = radar_scores(player.raw)
+    for player, scores in zip(players, score_maps):
         pts = [
             _axis_point(cx, cy, radius, i, n, scores[axis.key])
             for i, axis in enumerate(RADAR_AXES)
         ]
         aa_polygon(img, pts, fill=(*player.color, 22), scale=RADAR_AA_SCALE)
 
-    for player in players:
-        scores = radar_scores(player.raw)
+    for player, scores in zip(players, score_maps):
         pts = [
             _axis_point(cx, cy, radius, i, n, scores[axis.key])
             for i, axis in enumerate(RADAR_AXES)
@@ -147,10 +146,19 @@ def _draw_radar(
         draw.text((text_x, text_y), axis.label, font=font, fill=theme.MUTED_TEXT)
 
 
-def render_radar_card(players: list[RadarPlayer]) -> Image.Image:
-    """`players` must be length 1 or 2. Colors are assigned by the caller."""
+def render_radar_card(
+    players: list[RadarPlayer],
+    reference_rows: list[dict] | None = None,
+) -> Image.Image:
+    """`players` must be length 1 or 2. Colors are assigned by the caller.
+
+    When `reference_rows` is provided, every axis is normalized as a percentile
+    against that shared pool so core stats are comparable on one 0-100 scale.
+    """
     if not players or len(players) > 2:
         raise ValueError("render_radar_card expects 1 or 2 players")
+
+    score_maps = radar_scores_for_players([p.raw for p in players], reference_rows)
 
     chart_r = CHART_SIZE // 2
     canvas_h = (
@@ -199,6 +207,7 @@ def render_radar_card(players: list[RadarPlayer]) -> Image.Image:
         chart_cy,
         chart_r,
         players,
+        score_maps,
         label_min_y=panel_bottom + 18,
         label_max_y=legend_y - 8,
     )
@@ -212,6 +221,8 @@ def render_radar_card(players: list[RadarPlayer]) -> Image.Image:
         tw, _ = text_size(draw, line, legend_font)
         draw.text(((CANVAS_W - tw) / 2, legend_y + i * 18), line, font=legend_font, fill=theme.MUTED_TEXT)
 
+    cursor_y = legend_y + 40
+
     # Color key when comparing two players — centered under the chart.
     if len(players) == 2:
         key_font = theme.label(13)
@@ -220,10 +231,18 @@ def render_radar_card(players: list[RadarPlayer]) -> Image.Image:
         widths = [10 + 8 + text_size(draw, name, key_font)[0] for name in names]
         total_w = sum(widths) + gap * (len(players) - 1)
         kx = (CANVAS_W - total_w) / 2
-        key_y = legend_y + 44
         for player, name, entry_w in zip(players, names, widths):
-            aa_ellipse(img, (kx, key_y + 2, kx + 10, key_y + 12), fill=player.color, scale=5)
-            draw.text((kx + 18, key_y), name, font=key_font, fill=theme.TEXT)
+            aa_ellipse(img, (kx, cursor_y + 2, kx + 10, cursor_y + 12), fill=player.color, scale=5)
+            draw.text((kx + 18, cursor_y), name, font=key_font, fill=theme.TEXT)
             kx += entry_w + gap
+        cursor_y += 22
+
+    pool_n = len(reference_rows) if reference_rows else 0
+    if pool_n > 0:
+        note = f"Radar axes normalized as percentiles among {pool_n:,} tracked players."
+    else:
+        note = "Radar axes use fallback ceilings (tracked pool unavailable)."
+    nw, _ = text_size(draw, note, theme.body(11))
+    draw.text(((CANVAS_W - nw) / 2, cursor_y), note, font=theme.body(11), fill=theme.MUTED_TEXT)
 
     return img.convert("RGB")

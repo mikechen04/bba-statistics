@@ -93,7 +93,18 @@ class RadarCog(commands.Cog):
                 )
             )
 
-        image = await asyncio.to_thread(render_radar_card, players)
+        # Normalize every radar axis against the same qualified lifetime pool so
+        # FRAG/SUS/TEAM/CONS/T3/ECO share one 0-100 percentile scale.
+        def _reference_pool() -> list[dict]:
+            min_games = db.min_games_for_ranking("lifetime")
+            return [
+                row
+                for row in db.all_raw_rows("lifetime")
+                if (row.get("games_played") or 0) >= min_games
+            ]
+
+        reference_rows = await asyncio.to_thread(_reference_pool)
+        image = await asyncio.to_thread(render_radar_card, players, reference_rows)
 
         buffer = io.BytesIO()
         image.save(buffer, format="PNG")
