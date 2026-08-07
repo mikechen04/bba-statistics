@@ -109,6 +109,7 @@ class StatsCog(commands.Cog):
 
         display_username = theme.DISPLAY_NAME_OVERRIDES.get(player_stats.username.lower(), player_stats.username)
 
+        # Heart badges key off the real IGN; display name may be overridden (e.g. rougex).
         image = await asyncio.to_thread(
             render_stats_card,
             display_username,
@@ -120,6 +121,7 @@ class StatsCog(commands.Cog):
             period_label,
             min_games,
             values_override,
+            heart_username=player_stats.username,
         )
 
         buffer = io.BytesIO()

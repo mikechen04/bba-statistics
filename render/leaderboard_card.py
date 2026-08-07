@@ -9,6 +9,7 @@ from PIL import Image, ImageDraw
 
 from render import theme
 from render.avatar import get_avatar
+from render.hearts import has_name_heart, paste_name_heart
 from render.shapes import aa_ellipse, aa_line, aa_rounded_rectangle, rounded_crop, text_size
 
 CANVAS_W = 720
@@ -62,7 +63,12 @@ def _draw_entry_row(
     name_color = theme.ACCENT_DARK if highlight else theme.TEXT
     display_name = theme.DISPLAY_NAME_OVERRIDES.get(entry["username"].lower(), entry["username"])
     _, n_top, _, n_bottom = draw.textbbox((0, 0), display_name, font=name_font)
-    draw.text((name_x, cy - (n_bottom - n_top) / 2 - n_top), display_name, font=name_font, fill=name_color)
+    name_y = cy - (n_bottom - n_top) / 2 - n_top
+    draw.text((name_x, name_y), display_name, font=name_font, fill=name_color)
+
+    if has_name_heart(entry["username"]) or has_name_heart(display_name):
+        _, _, name_right, _ = draw.textbbox((name_x, name_y), display_name, font=name_font)
+        paste_name_heart(img, name_right, cy, size=20, gap=8)
 
     value_text = value_fmt(entry["value"])
     value_font = theme.heading(20)

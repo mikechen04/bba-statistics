@@ -36,8 +36,8 @@ NAME_GRADIENTS: dict[str, tuple[tuple[int, int, int], tuple[int, int, int]]] = {
     "ceiybi": ((196, 165, 227), (242, 170, 200)),        # light purple -> light pink
 }
 
-# Usernames that get a small heart drawn next to their name, as a personal touch.
-HEART_USERNAMES: set[str] = {"ceiybi", "unravelingstasis"}
+# Usernames that get a small purple heart drawn next to their name.
+HEART_USERNAMES: set[str] = {"celydra", "unravelingstasis"}
 
 # Personal touch: this player's real stats/ranks are shown just like anyone
 # else's, everywhere in the bot, just under a different display name.

@@ -8,6 +8,7 @@ from PIL import Image, ImageDraw
 
 from render import theme
 from render.avatar import get_avatar
+from render.hearts import has_name_heart, paste_name_heart
 from render.shapes import aa_ellipse, aa_line, aa_polygon, aa_rounded_rectangle, rounded_crop, text_size
 from stats.radar import RADAR_AXES, panel_stats, radar_scores_for_players
 
@@ -65,6 +66,9 @@ def _draw_player_panel(
     name = _display_name(player.username)
     name_font = theme.heading(18)
     draw.text((x0 + 78, y0 + 20), name, font=name_font, fill=theme.TEXT)
+    if has_name_heart(player.username):
+        _, _, name_right, _ = draw.textbbox((x0 + 78, y0 + 20), name, font=name_font)
+        paste_name_heart(img, name_right, y0 + 20 + text_size(draw, name, name_font)[1] / 2, size=18, gap=8)
 
     stats = panel_stats(player.raw)
     cols = 3

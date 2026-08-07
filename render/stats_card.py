@@ -12,6 +12,7 @@ from PIL import Image, ImageDraw
 
 from render import theme
 from render.avatar import get_avatar
+from render.hearts import has_name_heart, paste_name_heart
 from render.shapes import (
     aa_line,
     aa_rounded_mask,
@@ -291,6 +292,7 @@ def render_stats_card(
     period_label: str = "Lifetime",
     min_games: int = 100,
     values_override: dict[str, float] | None = None,
+    heart_username: str | None = None,
 ) -> Image.Image:
     values = values_override if values_override is not None else compute_all(raw)
     ctx = _RenderContext(values=values, percentiles=percentiles)
@@ -343,13 +345,8 @@ def render_stats_card(
     _, name_top, cursor_x, name_bottom = draw.textbbox((name_x, name_y), username, font=name_font)
     name_cy = (name_top + name_bottom) / 2
 
-    if username.lower() in theme.HEART_USERNAMES:
-        heart_text = "<3"
-        h_left, h_top, h_right, h_bottom = draw.textbbox((0, 0), heart_text, font=name_font)
-        heart_x = cursor_x + 14 - h_left
-        heart_y = name_cy - (h_top + h_bottom) / 2
-        draw.text((heart_x, heart_y), heart_text, font=name_font, fill=theme.ACCENT)
-        cursor_x = heart_x + h_right
+    if has_name_heart(heart_username or username):
+        cursor_x = paste_name_heart(img, cursor_x, name_cy, size=28, gap=10)
 
     hours_text = f"{METRICS['hours_played'].fmt(ctx.values.get('hours_played', 0.0))} played"
     _draw_hours_badge(img, draw, cursor_x + 14, name_cy, hours_text)

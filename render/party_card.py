@@ -5,6 +5,7 @@ from PIL import Image, ImageDraw
 
 from render import theme
 from render.avatar import get_avatar
+from render.hearts import has_name_heart, paste_name_heart
 from render.shapes import aa_line, aa_rounded_rectangle, rounded_crop, text_size
 
 CANVAS_W = 640
@@ -48,7 +49,11 @@ def render_party_card(leader: dict, members: list[dict]) -> Image.Image:
         name_x = avatar_pos[0] + avatar_size + 16
         is_leader = leader_uuid is not None and member["uuid"] == leader_uuid
         name_font = theme.label(19)
-        draw.text((name_x, y + ROW_H // 2 - 12), member["username"], font=name_font, fill=theme.TEXT)
+        name_y = y + ROW_H // 2 - 12
+        draw.text((name_x, name_y), member["username"], font=name_font, fill=theme.TEXT)
+        if has_name_heart(member["username"]):
+            _, _, name_right, _ = draw.textbbox((name_x, name_y), member["username"], font=name_font)
+            paste_name_heart(img, name_right, y + ROW_H / 2, size=18, gap=8)
 
         if is_leader:
             badge_text = "LEADER"
