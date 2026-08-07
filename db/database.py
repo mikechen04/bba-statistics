@@ -143,6 +143,12 @@ def set_meta(key: str, value: str) -> None:
         )
 
 
+def delete_meta(key: str) -> bool:
+    with _connect() as conn:
+        cur = conn.execute("DELETE FROM bot_meta WHERE key = ?", (key,))
+    return cur.rowcount > 0
+
+
 def season_needs_activation(season_key: str) -> bool:
     return is_season_started(season_key) and get_meta(_season_meta_key(season_key)) is None
 

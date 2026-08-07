@@ -17,6 +17,7 @@ from discord.ext import commands
 
 import config
 import db.database as db
+from cogs.rougex_gate import ROUGEX_BANNED_MESSAGE, RougeRoll, ROUGEX_USERNAME, is_rougex, is_rougex_banned, roll_rougex_gate
 from mcc_api.client import McApiError, PlayerNotFoundError, RateLimitedError, StatisticsPrivateError, client
 from render.leaderboard_card import render_leaderboard_card
 from stats.derive import METRICS
@@ -83,6 +84,10 @@ class LeaderboardCog(commands.Cog):
         # just show the top 10 with no personal row.
         target_uuid: str | None = None
         if username and username.strip():
+            gate = await asyncio.to_thread(roll_rougex_gate, username.strip(), False)
+            if gate is RougeRoll.BANNED:
+                await interaction.followup.send(ROUGEX_BANNED_MESSAGE, ephemeral=True)
+                return
             try:
                 player_stats = await asyncio.to_thread(client.get_player_stats, username.strip())
             except PlayerNotFoundError:
@@ -98,14 +103,28 @@ class LeaderboardCog(commands.Cog):
                 log.exception("Error fetching player stats for /bbalb")
                 await interaction.followup.send(f"uhh {e}", ephemeral=True)
                 return
+            if gate is None and is_rougex(player_stats.username):
+                gate = await asyncio.to_thread(roll_rougex_gate, player_stats.username, False)
+                if gate is RougeRoll.BANNED:
+                    await interaction.followup.send(ROUGEX_BANNED_MESSAGE, ephemeral=True)
+                    return
             await asyncio.to_thread(db.track_player_stats, player_stats.uuid, player_stats.username, player_stats.raw)
             target_uuid = player_stats.uuid
         else:
             linked = db.get_linked_account(str(interaction.user.id))
             if linked:
                 target_uuid = linked[0]
+                if is_rougex(linked[1]):
+                    gate = await asyncio.to_thread(roll_rougex_gate, linked[1], False)
+                    if gate is RougeRoll.BANNED:
+                        await interaction.followup.send(ROUGEX_BANNED_MESSAGE, ephemeral=True)
+                        return
 
         leaderboard = await asyncio.to_thread(db.compute_leaderboard, stat, period_key)
+        if await asyncio.to_thread(is_rougex_banned):
+            leaderboard = [e for e in leaderboard if e["username"].lower() != ROUGEX_USERNAME]
+            for i, entry in enumerate(leaderboard):
+                entry["rank"] = i + 1
         top10 = leaderboard[:10]
 
         viewer_entry = None

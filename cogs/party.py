@@ -11,6 +11,7 @@ from discord.ext import commands
 
 import db.database as db
 from cogs.common import UserFacingError, resolve_target_username
+from cogs.rougex_gate import ROUGEX_BANNED_MESSAGE, RougeRoll, is_rougex, roll_rougex_gate
 from mcc_api.client import McApiError, PlayerNotFoundError, RateLimitedError, client
 from render.party_card import render_party_card
 
@@ -52,6 +53,11 @@ class PartyCog(commands.Cog):
             await interaction.followup.send(str(e), ephemeral=True)
             return
 
+        gate = await asyncio.to_thread(roll_rougex_gate, target, False)
+        if gate is RougeRoll.BANNED:
+            await interaction.followup.send(ROUGEX_BANNED_MESSAGE, ephemeral=True)
+            return
+
         try:
             party_info = await asyncio.to_thread(client.get_player_party, target)
         except PlayerNotFoundError:
@@ -64,6 +70,12 @@ class PartyCog(commands.Cog):
             log.exception("Error fetching player party")
             await interaction.followup.send(f"uhh {e}", ephemeral=True)
             return
+
+        if gate is None and is_rougex(party_info.username):
+            gate = await asyncio.to_thread(roll_rougex_gate, party_info.username, False)
+            if gate is RougeRoll.BANNED:
+                await interaction.followup.send(ROUGEX_BANNED_MESSAGE, ephemeral=True)
+                return
 
         if not party_info.social_enabled:
             await interaction.followup.send("their social api is off", ephemeral=True)

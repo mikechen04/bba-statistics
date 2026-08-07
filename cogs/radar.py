@@ -11,6 +11,7 @@ from discord.ext import commands
 
 import db.database as db
 from cogs.common import UserFacingError, resolve_target_username
+from cogs.rougex_gate import ROUGEX_BANNED_MESSAGE, RougeRoll, is_rougex, roll_rougex_gate
 from mcc_api.client import McApiError, PlayerNotFoundError, RateLimitedError, StatisticsPrivateError, client
 from render import theme
 from render.radar_card import RadarPlayer, render_radar_card
@@ -20,6 +21,10 @@ log = logging.getLogger(__name__)
 
 async def _fetch_player(username: str):
     """Fetch + cache one player's stats, or raise a short user-facing string."""
+    gate = await asyncio.to_thread(roll_rougex_gate, username, False)
+    if gate is RougeRoll.BANNED:
+        raise UserFacingError(ROUGEX_BANNED_MESSAGE)
+
     try:
         player_stats = await asyncio.to_thread(client.get_player_stats, username)
     except PlayerNotFoundError:
@@ -31,6 +36,11 @@ async def _fetch_player(username: str):
     except McApiError as e:
         log.exception("Error fetching player stats for /bbaradar")
         raise UserFacingError(f"uhh {e}") from e
+
+    if gate is None and is_rougex(player_stats.username):
+        gate = await asyncio.to_thread(roll_rougex_gate, player_stats.username, False)
+        if gate is RougeRoll.BANNED:
+            raise UserFacingError(ROUGEX_BANNED_MESSAGE)
 
     await asyncio.to_thread(db.track_player_stats, player_stats.uuid, player_stats.username, player_stats.raw)
     return player_stats

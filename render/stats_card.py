@@ -25,26 +25,15 @@ from render.shapes import (
 )
 from stats.derive import METRICS, compute_all
 
-# Individual stat thresholds behind MCC Island's "Expert" LFG tier. Being accepted
-# requires meeting 3 of 6 categories (several of which have an and/or pair of
-# stats) plus player approval -- we just mark each stat that individually clears
-# its own bar with a tiny gold star, rather than compute the aggregate tier.
-EXPERT_THRESHOLDS: dict[str, float] = {
-    "wlr": 1.5,
-    "round_win_pct": 60.0,
-    "kills_per_game": 5.0,
-    "kills_per_round": 0.8,
-    "assists_per_game": 3.6,
-    "assists_per_round": 0.6,
-    "coins_per_round": 45.0,
-    "top1_pct": 25.0,
-    "top3_pct": 60.0,
-}
+TOP_TEN_RANK = 10
 
 
-def _meets_expert(key: str, value: float) -> bool:
-    threshold = EXPERT_THRESHOLDS.get(key)
-    return threshold is not None and value >= threshold
+def _is_top_ten(percentiles: dict[str, dict], key: str) -> bool:
+    entry = percentiles.get(key)
+    if not entry:
+        return False
+    rank = entry.get("rank")
+    return isinstance(rank, int) and 1 <= rank <= TOP_TEN_RANK
 
 
 def _format_rank_text(entry: dict | None, rank_display: str) -> str | None:
@@ -175,7 +164,7 @@ def _draw_stat_box(
     draw.text((inner_x, cur_y), value_text, font=value_font, fill=theme.TEXT)
     value_w, value_h = text_size(draw, value_text, value_font)
 
-    if _meets_expert(main_key, ctx.values[main_key]):
+    if _is_top_ten(ctx.percentiles, main_key):
         # Center the star on the glyphs' actual ink extents, not the font's full
         # line-height box (digits have no descenders, so those differ).
         ink_left, ink_top, ink_right, ink_bottom = draw.textbbox((inner_x, cur_y), value_text, font=value_font)
@@ -192,7 +181,7 @@ def _draw_stat_box(
         sub_label = METRICS[sub_key].label
         sub_value_text = METRICS[sub_key].fmt(ctx.values[sub_key])
         rank_text = _format_rank_text(ctx.percentiles.get(sub_key), rank_display)
-        sub_qualifies = _meets_expert(sub_key, ctx.values[sub_key])
+        sub_qualifies = _is_top_ten(ctx.percentiles, sub_key)
         star_r = 4.5
         star_reserved = (2 * star_r + 6) if sub_qualifies else 0
 
@@ -301,8 +290,10 @@ def render_stats_card(
     rank_display: str = "number",
     period_label: str = "Lifetime",
     min_games: int = 100,
+    values_override: dict[str, float] | None = None,
 ) -> Image.Image:
-    ctx = _RenderContext(values=compute_all(raw), percentiles=percentiles)
+    values = values_override if values_override is not None else compute_all(raw)
+    ctx = _RenderContext(values=values, percentiles=percentiles)
 
     canvas_h = (
         HEADER_H
@@ -405,7 +396,7 @@ def render_stats_card(
     )
     draw.text((MARGIN, y), footer_text, font=theme.body(13), fill=theme.MUTED_TEXT)
 
-    legend_text = "meets expert requirements"
+    legend_text = "top 10 in this category"
     legend_font = theme.body(13)
     legend_w, legend_h = text_size(draw, legend_text, legend_font)
     legend_star_r = 6

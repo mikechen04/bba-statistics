@@ -28,7 +28,7 @@ MUTED_TEXT = (150, 155, 165)
 MAIN_SOFT = (35, 48, 68)      # dark tint of MAIN, used for rank-badge backgrounds
 ACCENT_SOFT = (58, 38, 46)    # dark tint of ACCENT, used sparingly
 ACCENT_DARK = (240, 176, 198)  # bright shade of ACCENT for legible text on ACCENT_SOFT
-GOLD = (223, 178, 84)         # muted gold, reserved for the "Expert LFG" merit star
+GOLD = (223, 178, 84)         # muted gold, reserved for the top-10 merit star
 
 # Special-cased name gradients (left -> right) for specific players, as a personal touch.
 NAME_GRADIENTS: dict[str, tuple[tuple[int, int, int], tuple[int, int, int]]] = {
