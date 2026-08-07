@@ -337,6 +337,8 @@ def render_stats_card(
     name_y = avatar_y + 4
     name_font = theme.heading(30)
     gradient = theme.NAME_GRADIENTS.get(username.lower())
+    if gradient is None and heart_username:
+        gradient = theme.NAME_GRADIENTS.get(heart_username.lower())
     if gradient:
         draw_gradient_text(img, (name_x, name_y), username, name_font, *gradient)
     else:

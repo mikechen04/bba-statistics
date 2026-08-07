@@ -31,9 +31,12 @@ ACCENT_DARK = (240, 176, 198)  # bright shade of ACCENT for legible text on ACCE
 GOLD = (223, 178, 84)         # muted gold, reserved for the top-10 merit star
 
 # Special-cased name gradients (left -> right) for specific players, as a personal touch.
+_PINK_TO_BLUE = ((242, 170, 200), (150, 190, 232))  # light pink -> light blue
 NAME_GRADIENTS: dict[str, tuple[tuple[int, int, int], tuple[int, int, int]]] = {
-    "imeowforpets": ((242, 170, 200), (150, 190, 232)),  # light pink -> light blue
-    "ceiybi": ((196, 165, 227), (242, 170, 200)),        # light purple -> light pink
+    "imeowforpets": _PINK_TO_BLUE,
+    "celydra": _PINK_TO_BLUE,
+    "unravelingstasis": _PINK_TO_BLUE,
+    "ceiybi": ((196, 165, 227), (242, 170, 200)),  # light purple -> light pink
 }
 
 # Usernames that get a small purple heart drawn next to their name.
