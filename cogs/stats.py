@@ -13,8 +13,8 @@ import config
 import db.database as db
 from cogs.common import UserFacingError, resolve_target_username
 from cogs.rougex_gate import (
-    ROUGEX_BANNED_MESSAGE,
     RougeRoll,
+    banned_message,
     is_rougex,
     roll_rougex_gate,
     sixty_seven_metric_values,
@@ -68,8 +68,8 @@ class StatsCog(commands.Cog):
             return
 
         gate = await asyncio.to_thread(roll_rougex_gate, target)
-        if gate is RougeRoll.BANNED:
-            await interaction.followup.send(ROUGEX_BANNED_MESSAGE, ephemeral=True)
+        if gate is not None and gate.outcome is RougeRoll.BANNED:
+            await interaction.followup.send(banned_message(gate.dice), ephemeral=True)
             return
 
         try:
@@ -92,8 +92,8 @@ class StatsCog(commands.Cog):
         # roll once now (we skipped earlier because `target` wasn't him).
         if gate is None and is_rougex(player_stats.username):
             gate = await asyncio.to_thread(roll_rougex_gate, player_stats.username)
-            if gate is RougeRoll.BANNED:
-                await interaction.followup.send(ROUGEX_BANNED_MESSAGE, ephemeral=True)
+            if gate is not None and gate.outcome is RougeRoll.BANNED:
+                await interaction.followup.send(banned_message(gate.dice), ephemeral=True)
                 return
 
         await asyncio.to_thread(db.track_player_stats, player_stats.uuid, player_stats.username, player_stats.raw)
@@ -103,7 +103,7 @@ class StatsCog(commands.Cog):
         min_games = db.min_games_for_ranking(period_key)
 
         values_override = None
-        if gate is RougeRoll.SIXTY_SEVEN:
+        if gate is not None and gate.outcome is RougeRoll.SIXTY_SEVEN:
             values_override = sixty_seven_metric_values()
             percentiles = sixty_seven_percentiles()
 
@@ -126,7 +126,10 @@ class StatsCog(commands.Cog):
         image.save(buffer, format="PNG")
         buffer.seek(0)
         file = discord.File(buffer, filename=f"{target}_bba_stats.png")
-        await interaction.followup.send(file=file)
+        if gate is not None:
+            await interaction.followup.send(gate.announce(), file=file)
+        else:
+            await interaction.followup.send(file=file)
 
 
 async def setup(bot: commands.Bot) -> None:

@@ -6,6 +6,7 @@ the next check rolls again, so it stays temporary and reversible.
 from __future__ import annotations
 
 import random
+from dataclasses import dataclass
 from enum import Enum
 
 from stats.derive import METRICS
@@ -19,6 +20,15 @@ class RougeRoll(Enum):
     BANNED = "banned"
 
 
+@dataclass(frozen=True)
+class RougeGateResult:
+    outcome: RougeRoll
+    dice: int
+
+    def announce(self) -> str:
+        return f"d6: **{self.dice}**"
+
+
 def is_rougex(username: str | None) -> bool:
     return bool(username) and username.lower() == ROUGEX_USERNAME
 
@@ -28,7 +38,7 @@ def is_rougex_banned() -> bool:
     return False
 
 
-def roll_rougex_gate(username: str | None, allow_sixty_seven: bool = True) -> RougeRoll | None:
+def roll_rougex_gate(username: str | None, allow_sixty_seven: bool = True) -> RougeGateResult | None:
     """Roll a d6 for rougex15 lookups. Returns None for every other username.
 
     1-2: show real stats
@@ -38,12 +48,14 @@ def roll_rougex_gate(username: str | None, allow_sixty_seven: bool = True) -> Ro
     if not is_rougex(username):
         return None
 
-    roll = random.randint(1, 6)
-    if roll <= 2:
-        return RougeRoll.NORMAL
-    if roll <= 5:
-        return RougeRoll.SIXTY_SEVEN if allow_sixty_seven else RougeRoll.NORMAL
-    return RougeRoll.BANNED
+    dice = random.randint(1, 6)
+    if dice <= 2:
+        outcome = RougeRoll.NORMAL
+    elif dice <= 5:
+        outcome = RougeRoll.SIXTY_SEVEN if allow_sixty_seven else RougeRoll.NORMAL
+    else:
+        outcome = RougeRoll.BANNED
+    return RougeGateResult(outcome=outcome, dice=dice)
 
 
 def sixty_seven_metric_values() -> dict[str, float]:
@@ -73,4 +85,5 @@ def sixty_seven_percentiles() -> dict[str, dict]:
     }
 
 
-ROUGEX_BANNED_MESSAGE = "rougex15 got banned from this lookup (try again)"
+def banned_message(dice: int) -> str:
+    return f"d6: **{dice}** — rougex15 got banned from this lookup (try again)"

@@ -11,7 +11,7 @@ from discord.ext import commands
 
 import db.database as db
 from cogs.common import UserFacingError, resolve_target_username
-from cogs.rougex_gate import ROUGEX_BANNED_MESSAGE, RougeRoll, is_rougex, roll_rougex_gate
+from cogs.rougex_gate import RougeRoll, banned_message, is_rougex, roll_rougex_gate
 from mcc_api.client import McApiError, PlayerNotFoundError, RateLimitedError, client
 from render.party_card import render_party_card
 
@@ -54,8 +54,8 @@ class PartyCog(commands.Cog):
             return
 
         gate = await asyncio.to_thread(roll_rougex_gate, target, False)
-        if gate is RougeRoll.BANNED:
-            await interaction.followup.send(ROUGEX_BANNED_MESSAGE, ephemeral=True)
+        if gate is not None and gate.outcome is RougeRoll.BANNED:
+            await interaction.followup.send(banned_message(gate.dice), ephemeral=True)
             return
 
         try:
@@ -73,8 +73,8 @@ class PartyCog(commands.Cog):
 
         if gate is None and is_rougex(party_info.username):
             gate = await asyncio.to_thread(roll_rougex_gate, party_info.username, False)
-            if gate is RougeRoll.BANNED:
-                await interaction.followup.send(ROUGEX_BANNED_MESSAGE, ephemeral=True)
+            if gate is not None and gate.outcome is RougeRoll.BANNED:
+                await interaction.followup.send(banned_message(gate.dice), ephemeral=True)
                 return
 
         if not party_info.social_enabled:
@@ -99,7 +99,10 @@ class PartyCog(commands.Cog):
         image.save(buffer, format="PNG")
         buffer.seek(0)
         file = discord.File(buffer, filename=f"{party_info.username}_bba_party.png")
-        await interaction.followup.send(file=file)
+        if gate is not None:
+            await interaction.followup.send(gate.announce(), file=file)
+        else:
+            await interaction.followup.send(file=file)
 
         asyncio.create_task(_cache_party_members(members))
 
