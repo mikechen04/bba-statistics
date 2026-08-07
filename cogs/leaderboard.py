@@ -17,7 +17,7 @@ from discord.ext import commands
 
 import config
 import db.database as db
-from cogs.rougex_gate import ROUGEX_BANNED_MESSAGE, RougeRoll, ROUGEX_USERNAME, is_rougex, is_rougex_banned, roll_rougex_gate
+from cogs.rougex_gate import ROUGEX_BANNED_MESSAGE, RougeRoll, is_rougex, roll_rougex_gate
 from mcc_api.client import McApiError, PlayerNotFoundError, RateLimitedError, StatisticsPrivateError, client
 from render.leaderboard_card import render_leaderboard_card
 from stats.derive import METRICS
@@ -121,10 +121,6 @@ class LeaderboardCog(commands.Cog):
                         return
 
         leaderboard = await asyncio.to_thread(db.compute_leaderboard, stat, period_key)
-        if await asyncio.to_thread(is_rougex_banned):
-            leaderboard = [e for e in leaderboard if e["username"].lower() != ROUGEX_USERNAME]
-            for i, entry in enumerate(leaderboard):
-                entry["rank"] = i + 1
         top10 = leaderboard[:10]
 
         viewer_entry = None
