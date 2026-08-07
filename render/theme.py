@@ -32,10 +32,12 @@ GOLD = (223, 178, 84)         # muted gold, reserved for the top-10 merit star
 
 # Special-cased name gradients (left -> right) for specific players, as a personal touch.
 _PINK_TO_BLUE = ((242, 170, 200), (150, 190, 232))  # light pink -> light blue
+_PINK_TO_PURPLE = ((242, 170, 200), (196, 165, 227))  # light pink -> light purple
 NAME_GRADIENTS: dict[str, tuple[tuple[int, int, int], tuple[int, int, int]]] = {
     "imeowforpets": _PINK_TO_BLUE,
     "celydra": _PINK_TO_BLUE,
     "unravelingstasis": _PINK_TO_BLUE,
+    "celybispuppy": _PINK_TO_PURPLE,
     "ceiybi": ((196, 165, 227), (242, 170, 200)),  # light purple -> light pink
 }
 
