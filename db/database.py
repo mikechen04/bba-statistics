@@ -34,7 +34,7 @@ _lock = threading.Lock()
 
 # Players below these bars aren't stable enough samples to rank against.
 MIN_GAMES_FOR_RANKING_LIFETIME = 100
-MIN_GAMES_FOR_RANKING_SEASON = 50
+MIN_GAMES_FOR_RANKING_SEASON = 75
 
 _SCHEMA = f"""
 CREATE TABLE IF NOT EXISTS bba_stats (
