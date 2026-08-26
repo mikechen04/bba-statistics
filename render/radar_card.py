@@ -14,7 +14,7 @@ from stats.radar import RADAR_AXES, panel_stats, radar_scores_for_players
 
 CANVAS_W = 1000
 MARGIN = 28
-HEADER_H = 56
+HEADER_H = 64
 PANEL_H = 156
 PANEL_GAP = 16
 # Space above the hex tip reserved for the top axis label ("Fragging"), so it
@@ -153,6 +153,7 @@ def _draw_radar(
 def render_radar_card(
     players: list[RadarPlayer],
     reference_rows: list[dict] | None = None,
+    period_label: str = "Lifetime",
 ) -> Image.Image:
     """`players` must be length 1 or 2. Colors are assigned by the caller.
 
@@ -187,6 +188,9 @@ def render_radar_card(
     brand = "BBA STATS"
     bw, _ = text_size(draw, brand, theme.heading(16))
     draw.text((CANVAS_W - MARGIN - bw, 26), brand, font=theme.heading(16), fill=theme.MAIN)
+    period_brand = period_label.upper()
+    pbw, _ = text_size(draw, period_brand, theme.label(12))
+    draw.text((CANVAS_W - MARGIN - pbw, 48), period_brand, font=theme.label(12), fill=theme.MUTED_TEXT)
 
     # Player panels.
     panel_y = HEADER_H + 4

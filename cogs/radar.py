@@ -9,6 +9,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+import config
 import db.database as db
 from cogs.common import UserFacingError, resolve_target_username
 from cogs.rougex_gate import RougeRoll, banned_message, is_rougex, roll_rougex_gate
@@ -57,6 +58,13 @@ class RadarCog(commands.Cog):
     @app_commands.describe(
         username1="First MCC Island username (defaults to your linked account).",
         username2="Optional second username to overlay on the radar.",
+        period="Show lifetime stats or Season 4 stats. Defaults to Season 4.",
+    )
+    @app_commands.choices(
+        period=[
+            app_commands.Choice(name="season4", value=config.SEASON4_KEY),
+            app_commands.Choice(name="lifetime", value="lifetime"),
+        ]
     )
     @app_commands.allowed_installs(guilds=True, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
@@ -65,8 +73,11 @@ class RadarCog(commands.Cog):
         interaction: discord.Interaction,
         username1: str | None = None,
         username2: str | None = None,
+        period: app_commands.Choice[str] | None = None,
     ) -> None:
         await interaction.response.defer()
+        period_key = period.value if period else config.SEASON4_KEY
+        period_label = config.SEASON4_LABEL if period_key == config.SEASON4_KEY else "Lifetime"
 
         try:
             target1 = await resolve_target_username(interaction, username1)
@@ -88,36 +99,38 @@ class RadarCog(commands.Cog):
             await interaction.followup.send("those are the same person lol", ephemeral=True)
             return
 
+        raw1 = await asyncio.to_thread(db.get_player_raw, p1.uuid, period_key)
         players = [
             RadarPlayer(
                 username=p1.username,
                 uuid=p1.uuid,
-                raw=p1.raw,
+                raw=raw1,
                 color=theme.MAIN,
             )
         ]
         if p2:
+            raw2 = await asyncio.to_thread(db.get_player_raw, p2.uuid, period_key)
             players.append(
                 RadarPlayer(
                     username=p2.username,
                     uuid=p2.uuid,
-                    raw=p2.raw,
+                    raw=raw2,
                     color=theme.ACCENT,
                 )
             )
 
-        # Normalize every radar axis against the same qualified lifetime pool so
-        # FRAG/SUS/TEAM/CONS/T3/ECO share one 0-100 percentile scale.
+        # Normalize every radar axis against the same qualified pool for this
+        # period so FRAG/SUS/TEAM/CONS/T3/ECO share one 0-100 percentile scale.
         def _reference_pool() -> list[dict]:
-            min_games = db.min_games_for_ranking("lifetime")
+            min_games = db.min_games_for_ranking(period_key)
             return [
                 row
-                for row in db.all_raw_rows("lifetime")
+                for row in db.all_raw_rows(period_key)
                 if (row.get("games_played") or 0) >= min_games
             ]
 
         reference_rows = await asyncio.to_thread(_reference_pool)
-        image = await asyncio.to_thread(render_radar_card, players, reference_rows)
+        image = await asyncio.to_thread(render_radar_card, players, reference_rows, period_label)
 
         buffer = io.BytesIO()
         image.save(buffer, format="PNG")

@@ -157,6 +157,9 @@ def _merge_raw(existing: dict | None, raw: dict) -> dict[str, int] | None:
     """Merge an API payload into an existing row without wiping good data.
 
     Returns None when the payload is empty/unusable and should be ignored.
+    Lifetime counters are treated as monotonic: a glitchy/partial payload must
+    not roll a tracked total backwards (that can make an older season delta
+    look higher than the newer lifetime total).
     """
     provided = {k: int(raw[k]) for k in RAW_KEYS if k in raw and raw[k] is not None}
     if not provided:
@@ -168,7 +171,14 @@ def _merge_raw(existing: dict | None, raw: dict) -> dict[str, int] | None:
         # leaderboard seeds return players whose nested statistics block is empty).
         if existing_games > 0 and len(provided) == len(RAW_KEYS) and all(v == 0 for v in provided.values()):
             return None
-        return {k: provided.get(k, int(existing.get(k) or 0)) for k in RAW_KEYS}
+        merged: dict[str, int] = {}
+        for key in RAW_KEYS:
+            old_val = int(existing.get(key) or 0)
+            if key in provided:
+                merged[key] = max(provided[key], old_val)
+            else:
+                merged[key] = old_val
+        return merged
 
     return {k: provided.get(k, 0) for k in RAW_KEYS}
 
@@ -402,7 +412,10 @@ def _sanitize_season_raw(season_row: dict) -> dict:
 def _season_raw_from_rows(current_row: dict, baseline_raw: dict[str, int]) -> dict:
     season_row = {"uuid": current_row["uuid"], "username": current_row["username"]}
     for key in RAW_KEYS:
-        season_row[key] = max(int(current_row.get(key) or 0) - int(baseline_raw.get(key) or 0), 0)
+        current_val = max(int(current_row.get(key) or 0), 0)
+        baseline_val = max(int(baseline_raw.get(key) or 0), 0)
+        # Season can never exceed the current lifetime total for the same key.
+        season_row[key] = min(max(current_val - baseline_val, 0), current_val)
     return _sanitize_season_raw(season_row)
 
 
