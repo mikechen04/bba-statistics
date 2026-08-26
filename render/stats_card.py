@@ -60,7 +60,7 @@ OVERVIEW_H = 104
 ROW_H = 148
 SECTION_LABEL_H = 34
 DAMAGE_BAR_H = 116
-FOOTER_H = 80
+FOOTER_H = 100
 
 # (main_metric_key, [sub_metric_keys])
 OVERVIEW_ROW: list[tuple[str, list[str]]] = [
@@ -405,5 +405,7 @@ def render_stats_card(
 
     note_text = "I love love love Celybi <3"
     draw.text((MARGIN, y + 24), note_text, font=theme.label(13), fill=theme.ACCENT)
+    vip_text = "if you are vip and would like a custom colored name just dm me"
+    draw.text((MARGIN, y + 44), vip_text, font=theme.label(13), fill=theme.MUTED_TEXT)
 
     return img
