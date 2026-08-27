@@ -13,6 +13,7 @@ from PIL import Image, ImageDraw
 from render import theme
 from render.avatar import get_avatar
 from render.hearts import has_name_heart, paste_name_heart
+from render.name_colors import bbastats_name_color
 from render.shapes import (
     aa_line,
     aa_rounded_mask,
@@ -339,8 +340,11 @@ def render_stats_card(
     gradient = theme.NAME_GRADIENTS.get(username.lower())
     if gradient is None and heart_username:
         gradient = theme.NAME_GRADIENTS.get(heart_username.lower())
+    name_color = bbastats_name_color(heart_username or username)
     if gradient:
         draw_gradient_text(img, (name_x, name_y), username, name_font, *gradient)
+    elif name_color:
+        draw.text((name_x, name_y), username, font=name_font, fill=name_color)
     else:
         draw.text((name_x, name_y), username, font=name_font, fill=theme.TEXT)
 

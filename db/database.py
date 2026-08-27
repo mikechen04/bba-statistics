@@ -149,6 +149,34 @@ def delete_meta(key: str) -> bool:
     return cur.rowcount > 0
 
 
+_BBASTATS_NAME_COLOR_PREFIX = "bbastats_name_color:"
+
+
+def set_bbastats_name_color(username: str, color: tuple[int, int, int]) -> None:
+    key = f"{_BBASTATS_NAME_COLOR_PREFIX}{username.lower()}"
+    set_meta(key, f"{color[0]},{color[1]},{color[2]}")
+
+
+def clear_bbastats_name_color(username: str) -> bool:
+    return delete_meta(f"{_BBASTATS_NAME_COLOR_PREFIX}{username.lower()}")
+
+
+def get_bbastats_name_color(username: str) -> tuple[int, int, int] | None:
+    raw = get_meta(f"{_BBASTATS_NAME_COLOR_PREFIX}{username.lower()}")
+    if not raw:
+        return None
+    parts = raw.split(",")
+    if len(parts) != 3:
+        return None
+    try:
+        rgb = tuple(int(p) for p in parts)
+    except ValueError:
+        return None
+    if any(c < 0 or c > 255 for c in rgb):
+        return None
+    return rgb
+
+
 def season_needs_activation(season_key: str) -> bool:
     return is_season_started(season_key) and get_meta(_season_meta_key(season_key)) is None
 

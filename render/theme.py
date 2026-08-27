@@ -44,6 +44,11 @@ NAME_GRADIENTS: dict[str, tuple[tuple[int, int, int], tuple[int, int, int]]] = {
 # Usernames that get a small purple heart drawn next to their name.
 HEART_USERNAMES: set[str] = {"celydra", "unravelingstasis"}
 
+# Solid name colors on /bbastats player cards only (not leaderboard/radar/party).
+BBASTATS_NAME_COLORS: dict[str, tuple[int, int, int]] = {
+    "xnotcool": (196, 165, 227),  # light purple
+}
+
 # Personal touch: this player's real stats/ranks are shown just like anyone
 # else's, everywhere in the bot, just under a different display name.
 DISPLAY_NAME_OVERRIDES: dict[str, str] = {"rougex15": "rougex67"}

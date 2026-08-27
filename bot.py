@@ -23,7 +23,7 @@ log = logging.getLogger("bba-bot")
 INTENTS = discord.Intents.default()
 INTENTS.message_content = True
 
-COGS = ("cogs.link", "cogs.stats", "cogs.party", "cogs.leaderboard", "cogs.radar", "cogs.history")
+COGS = ("cogs.link", "cogs.stats", "cogs.party", "cogs.leaderboard", "cogs.radar", "cogs.history", "cogs.debug")
 
 
 class BbaBot(commands.Bot):
