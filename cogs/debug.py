@@ -88,10 +88,12 @@ class DebugCog(commands.Cog):
         await asyncio.to_thread(db.set_bbastats_name_color, ign, parsed)
         await asyncio.to_thread(db.track_player_stats, player_stats.uuid, player_stats.username, player_stats.raw)
 
-        raw_for_card = await asyncio.to_thread(db.get_player_raw, player_stats.uuid, config.SEASON4_KEY)
-        percentiles = await asyncio.to_thread(db.compute_percentiles, player_stats.uuid, config.SEASON4_KEY)
-        tracked_total = await asyncio.to_thread(db.qualified_player_count, config.SEASON4_KEY)
-        min_games = db.min_games_for_ranking(config.SEASON4_KEY)
+        period_key = config.default_period_key()
+        period_label = config.period_label(period_key)
+        raw_for_card = await asyncio.to_thread(db.get_player_raw, player_stats.uuid, period_key)
+        percentiles = await asyncio.to_thread(db.compute_percentiles, player_stats.uuid, period_key)
+        tracked_total = await asyncio.to_thread(db.qualified_player_count, period_key)
+        min_games = db.min_games_for_ranking(period_key)
         display_username = theme.DISPLAY_NAME_OVERRIDES.get(ign.lower(), ign)
 
         image = await asyncio.to_thread(
@@ -102,7 +104,7 @@ class DebugCog(commands.Cog):
             percentiles,
             tracked_total,
             "number",
-            config.SEASON4_LABEL,
+            period_label,
             min_games,
             None,
             heart_username=ign,

@@ -15,8 +15,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-import config
 import db.database as db
+from cogs.common import PERIOD_CHOICES, resolve_period
 from cogs.rougex_gate import RougeRoll, banned_message, is_rougex, roll_rougex_gate
 from mcc_api.client import McApiError, PlayerNotFoundError, RateLimitedError, StatisticsPrivateError, client
 from render.leaderboard_card import render_leaderboard_card
@@ -52,15 +52,10 @@ class LeaderboardCog(commands.Cog):
     @app_commands.describe(
         stat="Which stat's leaderboard to show (start typing to search).",
         username="MCC Island username whose rank to show below the top 10 (defaults to your linked account).",
-        period="Show lifetime stats or Season 4 stats. Defaults to Season 4.",
+        period="Show S4 Off-Season, Season 4 (final), or lifetime stats. Defaults to S4 Off-Season.",
     )
     @app_commands.autocomplete(stat=_stat_autocomplete)
-    @app_commands.choices(
-        period=[
-            app_commands.Choice(name="season4", value=config.SEASON4_KEY),
-            app_commands.Choice(name="lifetime", value="lifetime"),
-        ]
-    )
+    @app_commands.choices(period=PERIOD_CHOICES)
     @app_commands.allowed_installs(guilds=True, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def bbalb(
@@ -71,8 +66,7 @@ class LeaderboardCog(commands.Cog):
         period: app_commands.Choice[str] | None = None,
     ) -> None:
         await interaction.response.defer()
-        period_key = period.value if period else config.SEASON4_KEY
-        period_label = config.SEASON4_LABEL if period_key == config.SEASON4_KEY else "Lifetime"
+        period_key, period_label = resolve_period(period)
 
         metric = METRICS.get(stat)
         if metric is None:

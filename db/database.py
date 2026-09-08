@@ -19,6 +19,11 @@ searched directly:
 Season stats are lifetime totals minus a frozen season-start baseline. Baselines
 that were captured from empty/incomplete rows are repaired on startup so season
 boards don't accidentally show lifetime values.
+
+When a season ends, each player's lifetime totals at the cutoff are copied into
+`season_stat_finals` (immutable) and into the next period's start baseline.
+Closed-season stats are always `finals - start`, so later games cannot change
+them. The next period (e.g. S4 Off-Season) is `current - that baseline`.
 """
 from __future__ import annotations
 
@@ -52,6 +57,15 @@ CREATE TABLE IF NOT EXISTS linked_accounts (
 );
 
 CREATE TABLE IF NOT EXISTS season_stat_baselines (
+    season_key TEXT NOT NULL,
+    uuid TEXT NOT NULL,
+    username TEXT NOT NULL,
+    {", ".join(f"{k} INTEGER NOT NULL DEFAULT 0" for k in RAW_KEYS)},
+    captured_at TEXT NOT NULL,
+    PRIMARY KEY (season_key, uuid)
+);
+
+CREATE TABLE IF NOT EXISTS season_stat_finals (
     season_key TEXT NOT NULL,
     uuid TEXT NOT NULL,
     username TEXT NOT NULL,
@@ -98,10 +112,16 @@ def init_db() -> None:
         for key in RAW_KEYS:
             if key not in baseline_cols:
                 conn.execute(f"ALTER TABLE season_stat_baselines ADD COLUMN {key} INTEGER NOT NULL DEFAULT 0")
+        finals_cols = {row[1] for row in conn.execute("PRAGMA table_info(season_stat_finals)")}
+        for key in RAW_KEYS:
+            if key not in finals_cols:
+                conn.execute(f"ALTER TABLE season_stat_finals ADD COLUMN {key} INTEGER NOT NULL DEFAULT 0")
 
-    # Safe to run every boot: fixes empty/incomplete season baselines in place.
-    if is_season_started(config.SEASON4_KEY):
-        repair_season_baselines(config.SEASON4_KEY)
+    # Safe to run every boot: fixes empty/incomplete start baselines in place.
+    # Never repair a closed season — current lifetime already includes later games.
+    for period in config.STAT_PERIODS.values():
+        if is_season_open(period.key):
+            repair_season_baselines(period.key)
 
 
 def _raw_values(raw: dict[str, int]) -> list[int]:
@@ -114,14 +134,30 @@ def _row_to_raw(row: sqlite3.Row | dict | None) -> dict[str, int]:
     return {k: int((row[k] if isinstance(row, sqlite3.Row) else row.get(k)) or 0) for k in RAW_KEYS}
 
 
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
 def _current_time() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return _now().isoformat()
 
 
 def is_season_started(season_key: str) -> bool:
-    return season_key == config.SEASON4_KEY and datetime.now(timezone.utc) >= config.SEASON4_START_AT.astimezone(
-        timezone.utc
-    )
+    period = config.get_period(season_key)
+    if period is None:
+        return False
+    return _now() >= period.start_at.astimezone(timezone.utc)
+
+
+def is_season_ended(season_key: str) -> bool:
+    period = config.get_period(season_key)
+    if period is None or period.end_at is None:
+        return False
+    return _now() >= period.end_at.astimezone(timezone.utc)
+
+
+def is_season_open(season_key: str) -> bool:
+    return is_season_started(season_key) and not is_season_ended(season_key)
 
 
 def _season_meta_key(season_key: str) -> str:
@@ -238,7 +274,7 @@ def upsert_player_stats(uuid: str, username: str, raw: dict[str, int]) -> None:
 
 def ensure_season_baseline(uuid: str, username: str, raw: dict[str, int] | None = None, season_key: str = config.SEASON4_KEY) -> None:
     """Freeze this player's lifetime totals as their season-start baseline once."""
-    if not is_season_started(season_key):
+    if not is_season_open(season_key):
         return
 
     with _connect() as conn:
@@ -259,21 +295,83 @@ def ensure_season_baseline(uuid: str, username: str, raw: dict[str, int] | None 
         if all(v == 0 for v in baseline_raw.values()):
             return
 
-        columns = ["season_key", "uuid", "username", *RAW_KEYS, "captured_at"]
-        values = [season_key, uuid, baseline_username, *_raw_values(baseline_raw), _current_time()]
-        placeholders = ", ".join("?" for _ in columns)
-        conn.execute(
-            f"INSERT OR IGNORE INTO season_stat_baselines ({', '.join(columns)}) VALUES ({placeholders})",
-            values,
-        )
+        _insert_baseline_ignore(conn, season_key, uuid, baseline_username, baseline_raw)
 
 
-def track_player_stats(uuid: str, username: str, raw: dict[str, int], season_key: str = config.SEASON4_KEY) -> None:
-    """Upsert lifetime stats and ensure a season baseline exists after season start."""
+def _insert_baseline_ignore(
+    conn: sqlite3.Connection, season_key: str, uuid: str, username: str, raw: dict[str, int]
+) -> None:
+    columns = ["season_key", "uuid", "username", *RAW_KEYS, "captured_at"]
+    values = [season_key, uuid, username, *_raw_values(raw), _current_time()]
+    placeholders = ", ".join("?" for _ in columns)
+    conn.execute(
+        f"INSERT OR IGNORE INTO season_stat_baselines ({', '.join(columns)}) VALUES ({placeholders})",
+        values,
+    )
+
+
+def _insert_final_ignore(
+    conn: sqlite3.Connection, season_key: str, uuid: str, username: str, raw: dict[str, int]
+) -> None:
+    """Write an immutable end-of-season snapshot. Never overwrites an existing final."""
+    columns = ["season_key", "uuid", "username", *RAW_KEYS, "captured_at"]
+    values = [season_key, uuid, username, *_raw_values(raw), _current_time()]
+    placeholders = ", ".join("?" for _ in columns)
+    conn.execute(
+        f"INSERT OR IGNORE INTO season_stat_finals ({', '.join(columns)}) VALUES ({placeholders})",
+        values,
+    )
+
+
+def freeze_player_before_update(uuid: str) -> None:
+    """If a season has ended, freeze this player's last known totals before a new upsert.
+
+    That keeps closed-season stats view-only: games in this upcoming API refresh
+    land in the next period (S4 Off-Season) instead of Season 4.
+    """
+    existing = None
+    with _connect() as conn:
+        row = conn.execute("SELECT * FROM bba_stats WHERE uuid = ?", (uuid,)).fetchone()
+        if row is not None:
+            existing = dict(row)
+
+    if existing is None:
+        return
+
+    baseline_raw = _row_to_raw(existing)
+    if all(v == 0 for v in baseline_raw.values()):
+        return
+
+    username = existing.get("username") or ""
+    with _connect() as conn:
+        for period in config.STAT_PERIODS.values():
+            if not is_season_ended(period.key):
+                continue
+            nxt = config.next_period(period.key)
+            if nxt is None:
+                continue
+            has_start = conn.execute(
+                "SELECT 1 FROM season_stat_baselines WHERE season_key = ? AND uuid = ?",
+                (period.key, uuid),
+            ).fetchone()
+            if has_start:
+                _insert_final_ignore(conn, period.key, uuid, username, baseline_raw)
+            _insert_baseline_ignore(conn, nxt.key, uuid, username, baseline_raw)
+
+
+def track_player_stats(uuid: str, username: str, raw: dict[str, int], season_key: str | None = None) -> None:
+    """Upsert lifetime stats and maintain baselines for every open season.
+
+    `season_key` is ignored; kept so older call sites that passed Season 4 still work.
+    """
+    del season_key
+    freeze_player_before_update(uuid)
     upsert_player_stats(uuid, username, raw)
-    ensure_season_baseline(uuid, username, raw, season_key=season_key)
-    if is_season_started(season_key):
-        repair_player_baseline(uuid, season_key)
+    for period in config.STAT_PERIODS.values():
+        if not is_season_open(period.key):
+            continue
+        ensure_season_baseline(uuid, username, raw, season_key=period.key)
+        repair_player_baseline(uuid, period.key)
 
 
 def capture_season_baselines_for_all(season_key: str = config.SEASON4_KEY) -> int:
@@ -309,6 +407,41 @@ def mark_season_activated(season_key: str = config.SEASON4_KEY) -> None:
     set_meta(_season_meta_key(season_key), _current_time())
 
 
+def capture_season_finals_for_all(season_key: str) -> int:
+    """Freeze current lifetime totals as an immutable end snapshot for a closed season."""
+    with _connect() as conn:
+        before = conn.execute(
+            "SELECT COUNT(*) FROM season_stat_finals WHERE season_key = ?",
+            (season_key,),
+        ).fetchone()[0]
+        games_filter = " AND c.games_played > 0" if "games_played" in RAW_KEYS else ""
+        conn.execute(
+            f"""
+            INSERT OR IGNORE INTO season_stat_finals (
+                season_key, uuid, username, {", ".join(RAW_KEYS)}, captured_at
+            )
+            SELECT ?, c.uuid, c.username, {", ".join(f"c.{k}" for k in RAW_KEYS)}, ?
+            FROM bba_stats c
+            INNER JOIN season_stat_baselines b
+                ON b.uuid = c.uuid AND b.season_key = ?
+            WHERE 1=1{games_filter}
+            """,
+            (season_key, _current_time(), season_key),
+        )
+        after = conn.execute(
+            "SELECT COUNT(*) FROM season_stat_finals WHERE season_key = ?",
+            (season_key,),
+        ).fetchone()[0]
+    return int(after - before)
+
+
+def freeze_season_end(closed_key: str, next_key: str) -> tuple[int, int]:
+    """Lock a closed season's stats and open the next period from the same snapshot."""
+    finals = capture_season_finals_for_all(closed_key)
+    baselines = capture_season_baselines_for_all(next_key)
+    return finals, baselines
+
+
 def _write_baseline(conn: sqlite3.Connection, season_key: str, uuid: str, username: str, raw: dict[str, int]) -> None:
     columns = ["season_key", "uuid", "username", *RAW_KEYS, "captured_at"]
     values = [season_key, uuid, username, *_raw_values(raw), _current_time()]
@@ -323,6 +456,8 @@ def _write_baseline(conn: sqlite3.Connection, season_key: str, uuid: str, userna
 
 def repair_player_baseline(uuid: str, season_key: str = config.SEASON4_KEY) -> bool:
     """Repair one player's baseline if it was captured empty/incomplete."""
+    if is_season_ended(season_key):
+        return False
     with _connect() as conn:
         current_row = conn.execute("SELECT * FROM bba_stats WHERE uuid = ?", (uuid,)).fetchone()
         baseline_row = conn.execute(
@@ -370,6 +505,8 @@ def _repaired_baseline(baseline: dict[str, int], current: dict[str, int]) -> dic
 
 def repair_season_baselines(season_key: str = config.SEASON4_KEY) -> int:
     """Repair all incomplete baselines for a season. Returns number repaired."""
+    if is_season_ended(season_key):
+        return 0
     fixed = 0
     with _connect() as conn:
         rows = conn.execute(
@@ -395,13 +532,34 @@ def repair_season_baselines(season_key: str = config.SEASON4_KEY) -> int:
     return fixed
 
 
-def _baseline_map(season_key: str) -> dict[str, dict[str, int]]:
+def _finals_map(season_key: str) -> dict[str, dict]:
     with _connect() as conn:
         rows = conn.execute(
-            f"SELECT uuid, {', '.join(RAW_KEYS)} FROM season_stat_baselines WHERE season_key = ?",
+            f"SELECT uuid, username, {', '.join(RAW_KEYS)} FROM season_stat_finals WHERE season_key = ?",
             (season_key,),
         ).fetchall()
-    return {row["uuid"]: _row_to_raw(row) for row in rows}
+    return {row["uuid"]: dict(row) for row in rows}
+
+
+def _current_rows_for_period(period: str, current_rows: list[dict]) -> list[dict]:
+    """Lifetime-shaped rows to subtract start baselines from for this period.
+
+    Open periods use live tracked totals. Closed periods use the immutable
+    end-of-season finals so later games cannot change the board.
+    """
+    if not is_season_ended(period):
+        return current_rows
+
+    finals = _finals_map(period)
+    out: list[dict] = []
+    for row in current_rows:
+        final = finals.get(row["uuid"])
+        if final is not None:
+            out.append(final)
+        else:
+            # Not frozen yet — last tracked lifetime is the best freeze point.
+            out.append(row)
+    return out
 
 
 def _sanitize_season_raw(season_row: dict) -> dict:
@@ -447,18 +605,28 @@ def _season_raw_from_rows(current_row: dict, baseline_raw: dict[str, int]) -> di
     return _sanitize_season_raw(season_row)
 
 
+def _baseline_map(season_key: str) -> dict[str, dict[str, int]]:
+    with _connect() as conn:
+        rows = conn.execute(
+            f"SELECT uuid, {', '.join(RAW_KEYS)} FROM season_stat_baselines WHERE season_key = ?",
+            (season_key,),
+        ).fetchall()
+    return {row["uuid"]: _row_to_raw(row) for row in rows}
+
+
 def all_raw_rows(period: str = "lifetime") -> list[dict]:
     with _connect() as conn:
         rows = conn.execute(f"SELECT uuid, username, {', '.join(RAW_KEYS)} FROM bba_stats").fetchall()
     current_rows = [dict(row) for row in rows]
-    if period == "lifetime":
+    if period == "lifetime" or period == config.LIFETIME_KEY:
         return current_rows
     if not is_season_started(period):
         return []
     baselines = _baseline_map(period)
+    period_rows = _current_rows_for_period(period, current_rows)
     return [
         _season_raw_from_rows(row, baselines[row["uuid"]])
-        for row in current_rows
+        for row in period_rows
         if row["uuid"] in baselines
     ]
 
@@ -472,7 +640,7 @@ def get_player_raw(uuid: str, period: str = "lifetime") -> dict[str, int]:
     if row is None:
         return {k: 0 for k in RAW_KEYS}
     current = dict(row)
-    if period == "lifetime":
+    if period == "lifetime" or period == config.LIFETIME_KEY:
         return _row_to_raw(current)
     if not is_season_started(period):
         return {k: 0 for k in RAW_KEYS}
@@ -480,7 +648,8 @@ def get_player_raw(uuid: str, period: str = "lifetime") -> dict[str, int]:
     baseline = baselines.get(uuid)
     if baseline is None:
         return {k: 0 for k in RAW_KEYS}
-    season = _season_raw_from_rows(current, baseline)
+    period_current = _current_rows_for_period(period, [current])[0]
+    season = _season_raw_from_rows(period_current, baseline)
     return {k: int(season.get(k) or 0) for k in RAW_KEYS}
 
 
