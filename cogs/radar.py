@@ -9,9 +9,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-import config
 import db.database as db
-from cogs.common import UserFacingError, resolve_target_username
+from cogs.common import PERIOD_CHOICES, UserFacingError, resolve_period, resolve_target_username
 from cogs.rougex_gate import RougeRoll, banned_message, is_rougex, roll_rougex_gate
 from mcc_api.client import McApiError, PlayerNotFoundError, RateLimitedError, StatisticsPrivateError, client
 from render import theme
@@ -58,14 +57,9 @@ class RadarCog(commands.Cog):
     @app_commands.describe(
         username1="First MCC Island username (defaults to your linked account).",
         username2="Optional second username to overlay on the radar.",
-        period="Show lifetime stats or Season 4 stats. Defaults to Season 4.",
+        period="Show S4 Off-Season, Season 4 (final), or lifetime stats. Defaults to S4 Off-Season.",
     )
-    @app_commands.choices(
-        period=[
-            app_commands.Choice(name="season4", value=config.SEASON4_KEY),
-            app_commands.Choice(name="lifetime", value="lifetime"),
-        ]
-    )
+    @app_commands.choices(period=PERIOD_CHOICES)
     @app_commands.allowed_installs(guilds=True, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def bbaradar(
@@ -76,8 +70,7 @@ class RadarCog(commands.Cog):
         period: app_commands.Choice[str] | None = None,
     ) -> None:
         await interaction.response.defer()
-        period_key = period.value if period else config.SEASON4_KEY
-        period_label = config.SEASON4_LABEL if period_key == config.SEASON4_KEY else "Lifetime"
+        period_key, period_label = resolve_period(period)
 
         try:
             target1 = await resolve_target_username(interaction, username1)

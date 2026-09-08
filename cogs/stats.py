@@ -9,9 +9,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-import config
 import db.database as db
-from cogs.common import UserFacingError, resolve_target_username
+from cogs.common import PERIOD_CHOICES, UserFacingError, resolve_period, resolve_target_username
 from cogs.rougex_gate import (
     RougeRoll,
     banned_message,
@@ -35,17 +34,14 @@ class StatsCog(commands.Cog):
     @app_commands.describe(
         username="MCC Island username to look up (defaults to your linked account).",
         display="Show ranks as position numbers (#1) or percentiles (0.1%). Defaults to numbers.",
-        period="Show lifetime stats or Season 4 stats. Defaults to Season 4.",
+        period="Show S4 Off-Season, Season 4 (final), or lifetime stats. Defaults to S4 Off-Season.",
     )
     @app_commands.choices(
         display=[
             app_commands.Choice(name="numbers", value="number"),
             app_commands.Choice(name="percentile", value="percentile"),
         ],
-        period=[
-            app_commands.Choice(name="season4", value=config.SEASON4_KEY),
-            app_commands.Choice(name="lifetime", value="lifetime"),
-        ],
+        period=PERIOD_CHOICES,
     )
     @app_commands.allowed_installs(guilds=True, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
@@ -58,8 +54,7 @@ class StatsCog(commands.Cog):
     ) -> None:
         await interaction.response.defer()
         rank_mode = display.value if display else "number"
-        period_key = period.value if period else config.SEASON4_KEY
-        period_label = config.SEASON4_LABEL if period_key == config.SEASON4_KEY else "Lifetime"
+        period_key, period_label = resolve_period(period)
 
         try:
             target = await resolve_target_username(interaction, username)

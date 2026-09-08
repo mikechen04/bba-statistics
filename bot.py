@@ -44,7 +44,7 @@ class BbaBot(commands.Bot):
             log.info("Synced %d command(s) globally", len(synced))
 
         self.seed_leaderboards.start()
-        self.activate_season4.start()
+        self.activate_seasons.start()
 
     async def on_ready(self) -> None:
         log.info("Logged in as %s (id=%s)", self.user, self.user.id if self.user else "?")
@@ -177,37 +177,80 @@ class BbaBot(commands.Bot):
             log.info("Leaderboard seed: cached %d player(s) from %s", len(players), stat_key)
 
     @tasks.loop(minutes=1)
-    async def activate_season4(self) -> None:
-        """Once Season 4 starts, freeze a baseline snapshot for the tracked pool."""
-        if not await asyncio.to_thread(db.season_needs_activation, config.SEASON4_KEY):
-            return
+    async def activate_seasons(self) -> None:
+        """Activate any seasonal period whose start time has arrived.
 
-        total_seeded = 0
-        for stat_key in LEADERBOARD_SEED_KEYS:
-            try:
-                players = await asyncio.to_thread(client.get_leaderboard, stat_key)
-            except McApiError:
-                log.exception("Season 4 activation seed failed for stat %s", stat_key)
+        A period that follows a closed season is frozen from the current DB
+        first (so Season 4 stays view-only), then leaderboards are seeded so
+        new games land in the new period. A first-of-its-kind season still
+        seeds first so the start baseline is as complete as possible.
+        """
+        periods = sorted(config.STAT_PERIODS.values(), key=lambda p: p.start_at)
+        for period in periods:
+            if not await asyncio.to_thread(db.season_needs_activation, period.key):
                 continue
-            total_seeded += len(players)
-            for player in players:
-                await asyncio.to_thread(db.track_player_stats, player.uuid, player.username, player.raw)
 
-        frozen = await asyncio.to_thread(db.capture_season_baselines_for_all, config.SEASON4_KEY)
-        await asyncio.to_thread(db.mark_season_activated, config.SEASON4_KEY)
-        log.info(
-            "Season 4 activated at %s; seeded %d player rows and froze %d season baselines",
-            config.SEASON4_START_AT.isoformat(),
-            total_seeded,
-            frozen,
-        )
+            previous = config.previous_period(period.key)
+            if previous is not None:
+                finals, frozen = await asyncio.to_thread(db.freeze_season_end, previous.key, period.key)
+                await asyncio.to_thread(db.mark_season_activated, period.key)
+                log.info(
+                    "%s activated at %s; froze %d %s finals and %d %s baselines",
+                    period.label,
+                    period.start_at.isoformat(),
+                    finals,
+                    previous.label,
+                    frozen,
+                    period.label,
+                )
+            elif await asyncio.to_thread(db.is_season_ended, period.key):
+                # Too late to open this window from live totals — that would
+                # freeze today's lifetime as the start and show 0 season stats.
+                await asyncio.to_thread(db.mark_season_activated, period.key)
+                log.warning(
+                    "%s start was missed; marking activated without recapturing baselines",
+                    period.label,
+                )
+                continue
+            else:
+                total_seeded = 0
+                for stat_key in LEADERBOARD_SEED_KEYS:
+                    try:
+                        players = await asyncio.to_thread(client.get_leaderboard, stat_key)
+                    except McApiError:
+                        log.exception("%s activation seed failed for stat %s", period.label, stat_key)
+                        continue
+                    total_seeded += len(players)
+                    for player in players:
+                        await asyncio.to_thread(db.track_player_stats, player.uuid, player.username, player.raw)
+
+                frozen = await asyncio.to_thread(db.capture_season_baselines_for_all, period.key)
+                await asyncio.to_thread(db.mark_season_activated, period.key)
+                log.info(
+                    "%s activated at %s; seeded %d player rows and froze %d season baselines",
+                    period.label,
+                    period.start_at.isoformat(),
+                    total_seeded,
+                    frozen,
+                )
+
+            if previous is not None:
+                for stat_key in LEADERBOARD_SEED_KEYS:
+                    try:
+                        players = await asyncio.to_thread(client.get_leaderboard, stat_key)
+                    except McApiError:
+                        log.exception("%s post-freeze seed failed for stat %s", period.label, stat_key)
+                        continue
+                    for player in players:
+                        await asyncio.to_thread(db.track_player_stats, player.uuid, player.username, player.raw)
+                    log.info("%s post-freeze seed: cached %d player(s) from %s", period.label, len(players), stat_key)
 
     @seed_leaderboards.before_loop
     async def _before_seed_leaderboards(self) -> None:
         await self.wait_until_ready()
 
-    @activate_season4.before_loop
-    async def _before_activate_season4(self) -> None:
+    @activate_seasons.before_loop
+    async def _before_activate_seasons(self) -> None:
         await self.wait_until_ready()
 
 
