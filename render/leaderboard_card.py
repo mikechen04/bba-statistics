@@ -53,7 +53,7 @@ def _draw_entry_row(
     pill_fg = theme.BACKGROUND if highlight else theme.MAIN
     _draw_rank_pill(img, draw, MARGIN + 14, cy, f"#{entry['rank']}", pill_bg, pill_fg)
 
-    avatar = rounded_crop(get_avatar(entry["uuid"], size=AVATAR_SIZE), radius=10)
+    avatar = rounded_crop(get_avatar(entry["uuid"], size=AVATAR_SIZE, fresh=True), radius=10)
     avatar_x = MARGIN + 14 + RANK_COL_W + 14
     avatar_y = y + (ROW_H - AVATAR_SIZE) // 2
     img.paste(avatar, (avatar_x, avatar_y), avatar)

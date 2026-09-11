@@ -42,7 +42,7 @@ def render_party_card(leader: dict, members: list[dict]) -> Image.Image:
         box = (MARGIN, y, CANVAS_W - MARGIN, y + ROW_H)
         aa_rounded_rectangle(img, box, radius=14, fill=theme.CARD_BG, outline=theme.BORDER, width=1)
 
-        avatar = rounded_crop(get_avatar(member["uuid"], size=avatar_size), radius=10)
+        avatar = rounded_crop(get_avatar(member["uuid"], size=avatar_size, fresh=True), radius=10)
         avatar_pos = (MARGIN + 14, y + (ROW_H - avatar_size) // 2)
         img.paste(avatar, avatar_pos, avatar)
 

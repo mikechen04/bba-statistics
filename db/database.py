@@ -94,8 +94,11 @@ def _connect():
 
 
 def min_games_for_ranking(period: str = "lifetime") -> int:
-    if period == "lifetime":
+    if period == "lifetime" or period == config.LIFETIME_KEY:
         return MIN_GAMES_FOR_RANKING_LIFETIME
+    configured = config.get_period(period)
+    if configured is not None:
+        return configured.min_games
     return MIN_GAMES_FOR_RANKING_SEASON
 
 

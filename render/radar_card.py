@@ -60,7 +60,7 @@ def _draw_player_panel(
     # Color tick matching this player's radar polygon.
     aa_rounded_rectangle(img, (x0 + 16, y0 + 18, x0 + 20, y0 + 36), radius=2, fill=player.color, scale=5)
 
-    avatar = rounded_crop(get_avatar(player.uuid, size=36), radius=8)
+    avatar = rounded_crop(get_avatar(player.uuid, size=36, fresh=True), radius=8)
     img.paste(avatar, (x0 + 30, y0 + 16), avatar)
 
     name = _display_name(player.username)

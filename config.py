@@ -57,6 +57,7 @@ class StatPeriod:
     choice_name: str
     start_at: datetime
     end_at: datetime | None = None
+    min_games: int = 75
 
 
 SEASON4 = StatPeriod(
@@ -73,6 +74,7 @@ S4_OFFSEASON = StatPeriod(
     choice_name="s4 off-season",
     start_at=SEASON4.end_at,
     end_at=None,
+    min_games=15,
 )
 
 STAT_PERIODS: dict[str, StatPeriod] = {
