@@ -323,7 +323,7 @@ def render_stats_card(
     draw.rectangle((0, 0, CANVAS_W, 6), fill=theme.ACCENT)
 
     avatar_size = 88
-    avatar = rounded_crop(get_avatar(uuid, size=avatar_size), radius=18)
+    avatar = rounded_crop(get_avatar(uuid, size=avatar_size, fresh=True), radius=18)
     avatar_x, avatar_y = MARGIN, 30
     img.paste(avatar, (avatar_x, avatar_y), avatar)
     aa_rounded_rectangle(

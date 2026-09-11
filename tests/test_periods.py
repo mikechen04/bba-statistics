@@ -42,6 +42,11 @@ class PeriodConfigTests(unittest.TestCase):
         self.assertEqual(values["season4"], config.SEASON4_KEY)
         self.assertEqual(values["lifetime"], config.LIFETIME_KEY)
 
+    def test_offseason_ranking_floor_is_15_games(self) -> None:
+        self.assertEqual(db.min_games_for_ranking(config.S4_OFFSEASON_KEY), 15)
+        self.assertEqual(db.min_games_for_ranking(config.SEASON4_KEY), 75)
+        self.assertEqual(db.min_games_for_ranking(config.LIFETIME_KEY), 100)
+
 
 class SeasonFreezeTests(unittest.TestCase):
     def setUp(self) -> None:
