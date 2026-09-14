@@ -11,16 +11,7 @@ from discord.ext import commands
 
 import db.database as db
 from cogs.common import PERIOD_CHOICES, UserFacingError, resolve_period, resolve_target_username
-from cogs.rougex_gate import (
-    RougeRoll,
-    banned_message,
-    is_rougex,
-    roll_rougex_gate,
-    sixty_seven_metric_values,
-    sixty_seven_percentiles,
-)
 from mcc_api.client import McApiError, PlayerNotFoundError, RateLimitedError, StatisticsPrivateError, client
-from render import theme
 from render.stats_card import render_stats_card
 
 log = logging.getLogger(__name__)
@@ -62,11 +53,6 @@ class StatsCog(commands.Cog):
             await interaction.followup.send(str(e), ephemeral=True)
             return
 
-        gate = await asyncio.to_thread(roll_rougex_gate, target)
-        if gate is not None and gate.outcome is RougeRoll.BANNED:
-            await interaction.followup.send(banned_message(gate.dice), ephemeral=True)
-            return
-
         try:
             player_stats = await asyncio.to_thread(client.get_player_stats, target)
         except PlayerNotFoundError:
@@ -83,31 +69,15 @@ class StatsCog(commands.Cog):
             await interaction.followup.send(f"uhh {e}", ephemeral=True)
             return
 
-        # If the user typed a non-rougex alias but the account resolves to rougex15,
-        # roll once now (we skipped earlier because `target` wasn't him).
-        if gate is None and is_rougex(player_stats.username):
-            gate = await asyncio.to_thread(roll_rougex_gate, player_stats.username)
-            if gate is not None and gate.outcome is RougeRoll.BANNED:
-                await interaction.followup.send(banned_message(gate.dice), ephemeral=True)
-                return
-
         await asyncio.to_thread(db.track_player_stats, player_stats.uuid, player_stats.username, player_stats.raw)
         raw_for_card = await asyncio.to_thread(db.get_player_raw, player_stats.uuid, period_key)
         percentiles = await asyncio.to_thread(db.compute_percentiles, player_stats.uuid, period_key)
         tracked_total = await asyncio.to_thread(db.qualified_player_count, period_key)
         min_games = db.min_games_for_ranking(period_key)
 
-        values_override = None
-        if gate is not None and gate.outcome is RougeRoll.SIXTY_SEVEN:
-            values_override = sixty_seven_metric_values()
-            percentiles = sixty_seven_percentiles()
-
-        display_username = theme.DISPLAY_NAME_OVERRIDES.get(player_stats.username.lower(), player_stats.username)
-
-        # Heart badges key off the real IGN; display name may be overridden (e.g. rougex).
         image = await asyncio.to_thread(
             render_stats_card,
-            display_username,
+            player_stats.username,
             player_stats.uuid,
             raw_for_card,
             percentiles,
@@ -115,7 +85,7 @@ class StatsCog(commands.Cog):
             rank_mode,
             period_label,
             min_games,
-            values_override,
+            None,
             heart_username=player_stats.username,
         )
 
@@ -123,10 +93,7 @@ class StatsCog(commands.Cog):
         image.save(buffer, format="PNG")
         buffer.seek(0)
         file = discord.File(buffer, filename=f"{target}_bba_stats.png")
-        if gate is not None:
-            await interaction.followup.send(gate.announce(), file=file)
-        else:
-            await interaction.followup.send(file=file)
+        await interaction.followup.send(file=file)
 
 
 async def setup(bot: commands.Bot) -> None:

@@ -37,10 +37,6 @@ class RadarPlayer:
     color: tuple[int, int, int]
 
 
-def _display_name(username: str) -> str:
-    return theme.DISPLAY_NAME_OVERRIDES.get(username.lower(), username)
-
-
 def _axis_point(cx: float, cy: float, radius: float, index: int, total: int, score: float) -> tuple[float, float]:
     # Start at top (-90°) and go clockwise so the layout reads naturally.
     angle = -math.pi / 2 + (2 * math.pi * index / total)
@@ -63,7 +59,7 @@ def _draw_player_panel(
     avatar = rounded_crop(get_avatar(player.uuid, size=36, fresh=True), radius=8)
     img.paste(avatar, (x0 + 30, y0 + 16), avatar)
 
-    name = _display_name(player.username)
+    name = player.username
     name_font = theme.heading(18)
     draw.text((x0 + 78, y0 + 20), name, font=name_font, fill=theme.TEXT)
     if has_name_heart(player.username):
@@ -235,7 +231,7 @@ def render_radar_card(
     if len(players) == 2:
         key_font = theme.label(13)
         gap = 28
-        names = [_display_name(p.username) for p in players]
+        names = [p.username for p in players]
         widths = [10 + 8 + text_size(draw, name, key_font)[0] for name in names]
         total_w = sum(widths) + gap * (len(players) - 1)
         kx = (CANVAS_W - total_w) / 2

@@ -17,7 +17,6 @@ from discord.ext import commands
 
 import db.database as db
 from cogs.common import PERIOD_CHOICES, resolve_period
-from cogs.rougex_gate import RougeRoll, banned_message, is_rougex, roll_rougex_gate
 from mcc_api.client import McApiError, PlayerNotFoundError, RateLimitedError, StatisticsPrivateError, client
 from render.leaderboard_card import render_leaderboard_card
 from stats.derive import METRICS
@@ -77,12 +76,7 @@ class LeaderboardCog(commands.Cog):
         # wins; otherwise fall back to the linked account. If neither is set,
         # just show the top 10 with no personal row.
         target_uuid: str | None = None
-        gate = None
         if username and username.strip():
-            gate = await asyncio.to_thread(roll_rougex_gate, username.strip(), False)
-            if gate is not None and gate.outcome is RougeRoll.BANNED:
-                await interaction.followup.send(banned_message(gate.dice), ephemeral=True)
-                return
             try:
                 player_stats = await asyncio.to_thread(client.get_player_stats, username.strip())
             except PlayerNotFoundError:
@@ -98,22 +92,12 @@ class LeaderboardCog(commands.Cog):
                 log.exception("Error fetching player stats for /bbalb")
                 await interaction.followup.send(f"uhh {e}", ephemeral=True)
                 return
-            if gate is None and is_rougex(player_stats.username):
-                gate = await asyncio.to_thread(roll_rougex_gate, player_stats.username, False)
-                if gate is not None and gate.outcome is RougeRoll.BANNED:
-                    await interaction.followup.send(banned_message(gate.dice), ephemeral=True)
-                    return
             await asyncio.to_thread(db.track_player_stats, player_stats.uuid, player_stats.username, player_stats.raw)
             target_uuid = player_stats.uuid
         else:
             linked = db.get_linked_account(str(interaction.user.id))
             if linked:
                 target_uuid = linked[0]
-                if is_rougex(linked[1]):
-                    gate = await asyncio.to_thread(roll_rougex_gate, linked[1], False)
-                    if gate is not None and gate.outcome is RougeRoll.BANNED:
-                        await interaction.followup.send(banned_message(gate.dice), ephemeral=True)
-                        return
 
         leaderboard = await asyncio.to_thread(db.compute_leaderboard, stat, period_key)
         top10 = leaderboard[:10]
@@ -142,10 +126,7 @@ class LeaderboardCog(commands.Cog):
         image.save(buffer, format="PNG")
         buffer.seek(0)
         file = discord.File(buffer, filename=f"bba_leaderboard_{stat}.png")
-        if gate is not None:
-            await interaction.followup.send(gate.announce(), file=file)
-        else:
-            await interaction.followup.send(file=file)
+        await interaction.followup.send(file=file)
 
 
 async def setup(bot: commands.Bot) -> None:

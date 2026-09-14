@@ -12,7 +12,6 @@ from discord.ext import commands
 import config
 import db.database as db
 from mcc_api.client import McApiError, PlayerNotFoundError, RateLimitedError, StatisticsPrivateError, client
-from render import theme
 from render.name_colors import named_color_choices, parse_color
 from render.stats_card import render_stats_card
 
@@ -94,11 +93,10 @@ class DebugCog(commands.Cog):
         percentiles = await asyncio.to_thread(db.compute_percentiles, player_stats.uuid, period_key)
         tracked_total = await asyncio.to_thread(db.qualified_player_count, period_key)
         min_games = db.min_games_for_ranking(period_key)
-        display_username = theme.DISPLAY_NAME_OVERRIDES.get(ign.lower(), ign)
 
         image = await asyncio.to_thread(
             render_stats_card,
-            display_username,
+            ign,
             player_stats.uuid,
             raw_for_card,
             percentiles,

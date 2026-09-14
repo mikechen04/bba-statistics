@@ -198,7 +198,7 @@ def render_history_card(payload: dict[str, Any], count: int = 5) -> Image.Image:
     matches: list[dict[str, Any]] = list(payload.get("matches") or [])
     recent = matches[: max(1, min(10, count))]
     ign = str(payload.get("playerIgn") or "player")
-    display_name = theme.DISPLAY_NAME_OVERRIDES.get(ign.lower(), ign)
+    display_name = ign
 
     rows_h = len(recent) * ROW_H + max(len(recent) - 1, 0) * ROW_GAP if recent else 36
     canvas_h = HEADER_H + 14 + rows_h + MARGIN
