@@ -49,10 +49,6 @@ BBASTATS_NAME_COLORS: dict[str, tuple[int, int, int]] = {
     "xnotcool": (196, 165, 227),  # light purple
 }
 
-# Personal touch: this player's real stats/ranks are shown just like anyone
-# else's, everywhere in the bot, just under a different display name.
-DISPLAY_NAME_OVERRIDES: dict[str, str] = {"rougex15": "rougex67"}
-
 _FONT_PATH = FONTS_DIR / "Lexend-Variable.ttf"
 
 # Named weights on the Lexend variable font's `wght` axis.

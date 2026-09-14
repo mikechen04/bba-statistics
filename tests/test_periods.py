@@ -79,6 +79,8 @@ class SeasonFreezeTests(unittest.TestCase):
         self.assertEqual(s4_before_freeze["games_played"], 75)
 
         db._now = lambda: AFTER_S4
+        # Stamp the snapshot after the cutoff so later games are off-season, not a stale S4 gap.
+        db.track_player_stats("u1", "Player", _raw(games_played=175, kills=80, games_won=70, rounds_played=500))
         db.freeze_season_end(config.SEASON4_KEY, config.S4_OFFSEASON_KEY)
         db.mark_season_activated(config.S4_OFFSEASON_KEY)
 
@@ -94,18 +96,22 @@ class SeasonFreezeTests(unittest.TestCase):
         self.assertEqual(off["kills"], 10)
         self.assertEqual(lifetime["games_played"], 190)
 
-    def test_lookup_after_cutoff_freezes_existing_row_before_upsert(self) -> None:
+    def test_stale_pre_cutoff_snapshot_is_attributed_to_season4(self) -> None:
         db.track_player_stats("u1", "Player", _raw(games_played=100, kills=50, games_won=40, rounds_played=300))
         db._now = lambda: AFTER_S4
 
-        db.track_player_stats("u1", "Player", _raw(games_played=130, kills=66, games_won=52, rounds_played=390))
+        db.track_player_stats("u1", "Player", _raw(games_played=437, kills=200, games_won=180, rounds_played=1200))
 
         s4 = db.get_player_raw("u1", config.SEASON4_KEY)
         off = db.get_player_raw("u1", config.S4_OFFSEASON_KEY)
-        self.assertEqual(s4["games_played"], 0)
-        self.assertEqual(off["games_played"], 30)
+        self.assertEqual(s4["games_played"], 337)
+        self.assertEqual(off["games_played"], 0)
 
-    def test_closed_season_baselines_are_not_repaired_from_later_games(self) -> None:
+        db.track_player_stats("u1", "Player", _raw(games_played=447, kills=204, games_won=184, rounds_played=1230))
+        self.assertEqual(db.get_player_raw("u1", config.SEASON4_KEY)["games_played"], 337)
+        self.assertEqual(db.get_player_raw("u1", config.S4_OFFSEASON_KEY)["games_played"], 10)
+
+    def test_closed_season_start_baselines_are_not_repaired_from_later_games(self) -> None:
         db.track_player_stats("u1", "Player", _raw(games_played=100, kills=50, games_won=40, rounds_played=300))
         db._now = lambda: AFTER_S4
         db.freeze_season_end(config.SEASON4_KEY, config.S4_OFFSEASON_KEY)
@@ -113,7 +119,9 @@ class SeasonFreezeTests(unittest.TestCase):
 
         self.assertFalse(db.repair_player_baseline("u1", config.SEASON4_KEY))
         self.assertEqual(db.repair_season_baselines(config.SEASON4_KEY), 0)
-        self.assertEqual(db.get_player_raw("u1", config.SEASON4_KEY)["games_played"], 0)
+        # The S4 *start* baseline stays at 100; the uncounted gap is locked into S4 finals.
+        self.assertEqual(db.get_player_raw("u1", config.SEASON4_KEY)["games_played"], 300)
+        self.assertEqual(db.get_player_raw("u1", config.S4_OFFSEASON_KEY)["games_played"], 0)
 
     def test_first_seen_during_offseason_has_no_season4_stats(self) -> None:
         db._now = lambda: AFTER_S4
@@ -130,6 +138,8 @@ class SeasonFreezeTests(unittest.TestCase):
         db.track_player_stats("b", "B", _raw(games_played=150, kills=30, games_won=60, rounds_played=300))
 
         db._now = lambda: AFTER_S4
+        db.upsert_player_stats("a", "A", _raw(games_played=140, kills=18, games_won=55, rounds_played=280))
+        db.upsert_player_stats("b", "B", _raw(games_played=150, kills=30, games_won=60, rounds_played=300))
         finals, baselines = db.freeze_season_end(config.SEASON4_KEY, config.S4_OFFSEASON_KEY)
         self.assertEqual(finals, 2)
         self.assertEqual(baselines, 2)
@@ -139,6 +149,52 @@ class SeasonFreezeTests(unittest.TestCase):
         self.assertEqual(db.get_player_raw("b", config.SEASON4_KEY)["games_played"], 30)
         self.assertEqual(db.get_player_raw("a", config.S4_OFFSEASON_KEY)["games_played"], 60)
         self.assertEqual(db.get_player_raw("b", config.S4_OFFSEASON_KEY)["games_played"], 0)
+
+    def test_boot_repair_moves_s4_backlog_out_of_offseason(self) -> None:
+        db.track_player_stats("u1", "Player", _raw(games_played=100, kills=50, games_won=40, rounds_played=300))
+        db._now = lambda: AFTER_S4
+        db.freeze_season_end(config.SEASON4_KEY, config.S4_OFFSEASON_KEY)
+        db.upsert_player_stats("u1", "Player", _raw(games_played=437, kills=200, games_won=180, rounds_played=1200))
+
+        self.assertEqual(db.get_player_raw("u1", config.S4_OFFSEASON_KEY)["games_played"], 337)
+        self.assertEqual(db.repair_stale_offseason_splits(), 1)
+        self.assertEqual(db.get_player_raw("u1", config.SEASON4_KEY)["games_played"], 337)
+        self.assertEqual(db.get_player_raw("u1", config.S4_OFFSEASON_KEY)["games_played"], 0)
+        self.assertEqual(db.repair_stale_offseason_splits(), 0)
+
+    def test_larppickleman_is_rebaselined_once(self) -> None:
+        db.track_player_stats(
+            "pickle",
+            "LarpPickleMan",
+            _raw(games_played=100, kills=50, games_won=40, rounds_played=300),
+        )
+        db.track_player_stats(
+            "pickle",
+            "LarpPickleMan",
+            _raw(games_played=180, kills=90, games_won=70, rounds_played=500),
+        )
+        db._now = lambda: AFTER_S4
+        db.freeze_season_end(config.SEASON4_KEY, config.S4_OFFSEASON_KEY)
+        db.upsert_player_stats(
+            "pickle",
+            "LarpPickleMan",
+            _raw(games_played=517, kills=240, games_won=200, rounds_played=1400),
+        )
+
+        # Mid-S4 snapshot (180) would not match the "start==off" heuristic, so the
+        # named one-time repair still has to catch this player.
+        self.assertEqual(db.get_player_raw("pickle", config.S4_OFFSEASON_KEY)["games_played"], 337)
+        self.assertEqual(db.repair_stale_offseason_splits(), 1)
+        self.assertEqual(db.get_player_raw("pickle", config.SEASON4_KEY)["games_played"], 417)
+        self.assertEqual(db.get_player_raw("pickle", config.S4_OFFSEASON_KEY)["games_played"], 0)
+
+        db.track_player_stats(
+            "pickle",
+            "LarpPickleMan",
+            _raw(games_played=527, kills=244, games_won=204, rounds_played=1430),
+        )
+        self.assertEqual(db.repair_stale_offseason_splits(), 0)
+        self.assertEqual(db.get_player_raw("pickle", config.S4_OFFSEASON_KEY)["games_played"], 10)
 
 
 if __name__ == "__main__":

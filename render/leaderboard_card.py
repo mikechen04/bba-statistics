@@ -62,17 +62,16 @@ def _draw_entry_row(
     name_font = theme.label(18)
     name_color = theme.ACCENT_DARK if highlight else theme.TEXT
     real_name = entry["username"]
-    display_name = theme.DISPLAY_NAME_OVERRIDES.get(real_name.lower(), real_name)
-    _, n_top, _, n_bottom = draw.textbbox((0, 0), display_name, font=name_font)
+    _, n_top, _, n_bottom = draw.textbbox((0, 0), real_name, font=name_font)
     name_y = cy - (n_bottom - n_top) / 2 - n_top
-    gradient = theme.NAME_GRADIENTS.get(real_name.lower()) or theme.NAME_GRADIENTS.get(display_name.lower())
+    gradient = theme.NAME_GRADIENTS.get(real_name.lower())
     if gradient and not highlight:
-        draw_gradient_text(img, (int(round(name_x)), int(round(name_y))), display_name, name_font, *gradient)
+        draw_gradient_text(img, (int(round(name_x)), int(round(name_y))), real_name, name_font, *gradient)
     else:
-        draw.text((name_x, name_y), display_name, font=name_font, fill=name_color)
+        draw.text((name_x, name_y), real_name, font=name_font, fill=name_color)
 
-    if has_name_heart(real_name) or has_name_heart(display_name):
-        _, _, name_right, _ = draw.textbbox((name_x, name_y), display_name, font=name_font)
+    if has_name_heart(real_name):
+        _, _, name_right, _ = draw.textbbox((name_x, name_y), real_name, font=name_font)
         paste_name_heart(img, name_right, cy, size=20, gap=8)
 
     value_text = value_fmt(entry["value"])
