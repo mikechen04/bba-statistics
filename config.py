@@ -68,18 +68,28 @@ SEASON4 = StatPeriod(
     # Inclusive of games through 5:59 AM Eastern; off-season starts at 6:00 AM.
     end_at=datetime(2026, 9, 8, 6, 0, tzinfo=EASTERN_EDT),
 )
+# Season 5 starts 2026-09-22 08:09 UTC (17:09 JST). S4 Off-Season is view-only
+# from this instant; later games only count toward Season 5.
+SEASON5_START_AT = datetime(2026, 9, 22, 8, 9, tzinfo=timezone.utc)
 S4_OFFSEASON = StatPeriod(
     key="s4offseason",
     label="S4 Off-Season",
     choice_name="s4 off-season",
     start_at=SEASON4.end_at,
-    end_at=None,
+    end_at=SEASON5_START_AT,
     min_games=15,
+)
+SEASON5 = StatPeriod(
+    key="season5",
+    label="Season 5",
+    choice_name="season5",
+    start_at=SEASON5_START_AT,
 )
 
 STAT_PERIODS: dict[str, StatPeriod] = {
     SEASON4.key: SEASON4,
     S4_OFFSEASON.key: S4_OFFSEASON,
+    SEASON5.key: SEASON5,
 }
 
 # Backward-compatible aliases used throughout the bot.
@@ -90,6 +100,10 @@ SEASON4_END_AT = SEASON4.end_at
 S4_OFFSEASON_KEY = S4_OFFSEASON.key
 S4_OFFSEASON_LABEL = S4_OFFSEASON.label
 S4_OFFSEASON_START_AT = S4_OFFSEASON.start_at
+S4_OFFSEASON_END_AT = S4_OFFSEASON.end_at
+SEASON5_KEY = SEASON5.key
+SEASON5_LABEL = SEASON5.label
+SEASON5_START_AT = SEASON5.start_at
 
 
 def _utc(dt: datetime) -> datetime:

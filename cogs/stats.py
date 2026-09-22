@@ -25,7 +25,7 @@ class StatsCog(commands.Cog):
     @app_commands.describe(
         username="MCC Island username to look up (defaults to your linked account).",
         display="Show ranks as position numbers (#1) or percentiles (0.1%). Defaults to numbers.",
-        period="Show S4 Off-Season, Season 4 (final), or lifetime stats. Defaults to S4 Off-Season.",
+        period="Show Season 5, S4 Off-Season (final), Season 4 (final), or lifetime. Defaults to Season 5.",
     )
     @app_commands.choices(
         display=[
