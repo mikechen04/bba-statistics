@@ -51,7 +51,7 @@ class LeaderboardCog(commands.Cog):
     @app_commands.describe(
         stat="Which stat's leaderboard to show (start typing to search).",
         username="MCC Island username whose rank to show below the top 10 (defaults to your linked account).",
-        period="Show S4 Off-Season, Season 4 (final), or lifetime stats. Defaults to S4 Off-Season.",
+        period="Show Season 5, S4 Off-Season (final), Season 4 (final), or lifetime. Defaults to Season 5.",
     )
     @app_commands.autocomplete(stat=_stat_autocomplete)
     @app_commands.choices(period=PERIOD_CHOICES)

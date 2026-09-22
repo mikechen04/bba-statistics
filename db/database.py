@@ -23,7 +23,7 @@ boards don't accidentally show lifetime values.
 When a season ends, each player's lifetime totals at the cutoff are copied into
 `season_stat_finals` (immutable) and into the next period's start baseline.
 Closed-season stats are always `finals - start`, so later games cannot change
-them. The next period (e.g. S4 Off-Season) is `current - that baseline`.
+them. The next period (e.g. Season 5 after S4 Off-Season) is `current - that baseline`.
 """
 from __future__ import annotations
 

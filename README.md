@@ -4,7 +4,7 @@ A Discord bot for MCC Island **Battle Box Arena** stats.
 
 ## Features
 
-- **`/bbastats [username] [display] [period]`** — your (or another player's) BBA stats as an image card, with hours played, rank/percentile badges, and gold stars on stats that meet "Expert" LFG requirements. `period` is `s4 off-season` (default), `season4` (final), or `lifetime`.
+- **`/bbastats [username] [display] [period]`** — your (or another player's) BBA stats as an image card, with hours played, rank/percentile badges, and gold stars on stats that meet "Expert" LFG requirements. `period` is `season5` (default), `s4 off-season` (final), `season4` (final), or `lifetime`.
 - **`/bbaradar [username1] [username2] [period]`** — radar profile for one player, or an overlap compare of two (fragging, sustain, team play, consistency, placement, economy). Same `period` options as `/bbastats`.
 - **`/bbalb stat [username] [period]`** — top 10 tracked players for a specific BBA stat (kills, WLR, coins per game, etc.). If a username is given (or you're linked) and they're outside the top 10, their rank is shown at the bottom. Same `period` options as `/bbastats`.
 - **`/bbaparty [username]`** — shows who a player is partied up with as an image card, or that they're solo queuing.
