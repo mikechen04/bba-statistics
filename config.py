@@ -58,6 +58,10 @@ class StatPeriod:
     start_at: datetime
     end_at: datetime | None = None
     min_games: int = 75
+    # When True, a last-known snapshot from before end_at is the freeze point, so
+    # games after that snapshot (including after the cutoff) count toward the next
+    # period. Default False keeps an uncounted gap inside this closed period.
+    credit_stale_gap_to_next: bool = False
 
 
 SEASON4 = StatPeriod(
@@ -78,6 +82,9 @@ S4_OFFSEASON = StatPeriod(
     start_at=SEASON4.end_at,
     end_at=SEASON5_START_AT,
     min_games=15,
+    # Season 5 was defined ~9 hours after it started. Use the last cache from
+    # before 08:09 UTC as the split so those games count toward Season 5.
+    credit_stale_gap_to_next=True,
 )
 SEASON5 = StatPeriod(
     key="season5",

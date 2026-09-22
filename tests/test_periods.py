@@ -252,6 +252,33 @@ class SeasonFreezeTests(unittest.TestCase):
         self.assertEqual(db.get_player_raw("u3", config.S4_OFFSEASON_KEY)["games_played"], 0)
         self.assertEqual(db.get_player_raw("u3", config.SEASON5_KEY)["games_played"], 10)
 
+    def test_last_offseason_cache_is_season5_start_so_later_games_count(self) -> None:
+        """A snapshot from before 08:09 UTC is Season 5's baseline, not a stale off-season dump."""
+        db.track_player_stats("u1", "Player", _raw(games_played=100, kills=50, games_won=40, rounds_played=300))
+        db.track_player_stats("u1", "Player", _raw(games_played=175, kills=80, games_won=70, rounds_played=500))
+
+        db._now = lambda: DURING_OFFSEASON
+        db.track_player_stats("u1", "Player", _raw(games_played=175, kills=80, games_won=70, rounds_played=500))
+        db.freeze_season_end(config.SEASON4_KEY, config.S4_OFFSEASON_KEY)
+        db.track_player_stats("u1", "Player", _raw(games_played=190, kills=90, games_won=76, rounds_played=540))
+
+        db._now = lambda: AFTER_S5
+        db.track_player_stats("u1", "Player", _raw(games_played=205, kills=100, games_won=82, rounds_played=580))
+
+        self.assertEqual(db.get_player_raw("u1", config.SEASON4_KEY)["games_played"], 75)
+        self.assertEqual(db.get_player_raw("u1", config.S4_OFFSEASON_KEY)["games_played"], 15)
+        self.assertEqual(db.get_player_raw("u1", config.SEASON5_KEY)["games_played"], 15)
+        self.assertEqual(db.get_player_raw("u1", config.SEASON5_KEY)["kills"], 10)
+
+    def test_stale_season4_snapshot_after_season5_start_still_goes_to_season4(self) -> None:
+        db.track_player_stats("u1", "Player", _raw(games_played=100, kills=50, games_won=40, rounds_played=300))
+        db._now = lambda: AFTER_S5
+        db.track_player_stats("u1", "Player", _raw(games_played=437, kills=200, games_won=180, rounds_played=1200))
+
+        self.assertEqual(db.get_player_raw("u1", config.SEASON4_KEY)["games_played"], 337)
+        self.assertEqual(db.get_player_raw("u1", config.S4_OFFSEASON_KEY)["games_played"], 0)
+        self.assertEqual(db.get_player_raw("u1", config.SEASON5_KEY)["games_played"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

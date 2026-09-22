@@ -353,8 +353,9 @@ def _insert_final_ignore(
 def freeze_player_before_update(uuid: str) -> None:
     """If a season has ended, freeze this player's last known totals before a new upsert.
 
-    Skips snapshots that predate the cutoff. Those rows still include the whole
-    uncounted S4 gap; freezing them would dump that gap into off-season.
+    Snapshots that predate the cutoff are skipped unless the period credits that
+    uncounted gap to the next window (Season 5 after a late off-season freeze).
+    Otherwise freezing them would dump a closed season into the next period.
     """
     existing = None
     with _connect() as conn:
@@ -377,7 +378,7 @@ def freeze_player_before_update(uuid: str) -> None:
             nxt = config.next_period(period.key)
             if nxt is None:
                 continue
-            if _snapshot_predates_period_end(existing, period):
+            if _snapshot_predates_period_end(existing, period) and not period.credit_stale_gap_to_next:
                 continue
             has_start = conn.execute(
                 "SELECT 1 FROM season_stat_baselines WHERE season_key = ? AND uuid = ?",
@@ -399,6 +400,8 @@ def _stale_closed_periods(uuid: str) -> list[config.StatPeriod]:
         if not is_season_ended(period.key):
             continue
         if config.next_period(period.key) is None:
+            continue
+        if period.credit_stale_gap_to_next:
             continue
         if _snapshot_predates_period_end(existing, period):
             stale.append(period)
@@ -569,7 +572,11 @@ def repair_stale_offseason_splits() -> int:
     off-season lookup used that old row as the off-season baseline and the entire S4
     delta showed up as off-season games.
     """
-    closed = [p for p in config.STAT_PERIODS.values() if is_season_ended(p.key) and config.next_period(p.key) is not None]
+    closed = [
+        p
+        for p in config.STAT_PERIODS.values()
+        if is_season_ended(p.key) and config.next_period(p.key) is not None and not p.credit_stale_gap_to_next
+    ]
     if not closed:
         return 0
 
@@ -612,7 +619,7 @@ def repair_stale_offseason_splits() -> int:
         uuid = _find_uuid_by_username(username)
         if uuid is None:
             continue
-        if _rebaseline_closed_seasons_to_current(uuid):
+        if _rebaseline_closed_seasons_to_current(uuid, [config.SEASON4]):
             set_meta(meta_key, _current_time())
             fixed += 1
     return fixed
