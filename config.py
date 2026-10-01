@@ -47,6 +47,14 @@ EASTERN_EDT = timezone(timedelta(hours=-4), name="EDT")
 LIFETIME_KEY = "lifetime"
 LIFETIME_LABEL = "Lifetime"
 
+# Lookups for these IGNs fail like an unknown name. Match is case-insensitive.
+BLOCKED_USERNAMES = frozenset({"chatsura"})
+BLOCKED_LOOKUP_MESSAGE = "you mispelled their name dumbass"
+
+
+def is_blocked_username(username: str | None) -> bool:
+    return bool(username) and username.strip().lower() in BLOCKED_USERNAMES
+
 
 @dataclass(frozen=True)
 class StatPeriod:

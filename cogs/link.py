@@ -9,6 +9,7 @@ from discord import app_commands
 from discord.ext import commands
 
 import db.database as db
+from cogs.common import UserFacingError, reject_blocked_username
 from mcc_api.client import McApiError, PlayerNotFoundError, RateLimitedError, client
 
 log = logging.getLogger(__name__)
@@ -25,7 +26,11 @@ class LinkCog(commands.Cog):
     async def link(self, interaction: discord.Interaction, username: str) -> None:
         await interaction.response.defer(ephemeral=True)
         try:
+            reject_blocked_username(username)
             uuid, canonical_username = await asyncio.to_thread(client.resolve_username, username)
+        except UserFacingError as e:
+            await interaction.followup.send(str(e), ephemeral=True)
+            return
         except PlayerNotFoundError:
             await interaction.followup.send("u mispelled their username", ephemeral=True)
             return

@@ -15,8 +15,9 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+import config
 import db.database as db
-from cogs.common import PERIOD_CHOICES, resolve_period
+from cogs.common import PERIOD_CHOICES, UserFacingError, reject_blocked_username, resolve_period
 from mcc_api.client import McApiError, PlayerNotFoundError, RateLimitedError, StatisticsPrivateError, client
 from render.leaderboard_card import render_leaderboard_card
 from stats.derive import METRICS
@@ -78,7 +79,11 @@ class LeaderboardCog(commands.Cog):
         target_uuid: str | None = None
         if username and username.strip():
             try:
+                reject_blocked_username(username.strip())
                 player_stats = await asyncio.to_thread(client.get_player_stats, username.strip())
+            except UserFacingError as e:
+                await interaction.followup.send(str(e), ephemeral=True)
+                return
             except PlayerNotFoundError:
                 await interaction.followup.send("u mispelled their username", ephemeral=True)
                 return
@@ -96,7 +101,7 @@ class LeaderboardCog(commands.Cog):
             target_uuid = player_stats.uuid
         else:
             linked = db.get_linked_account(str(interaction.user.id))
-            if linked:
+            if linked and not config.is_blocked_username(linked[1]):
                 target_uuid = linked[0]
 
         leaderboard = await asyncio.to_thread(db.compute_leaderboard, stat, period_key)

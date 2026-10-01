@@ -440,6 +440,8 @@ def track_player_stats(uuid: str, username: str, raw: dict[str, int], season_key
     `season_key` is ignored; kept so older call sites that passed Season 4 still work.
     """
     del season_key
+    if config.is_blocked_username(username):
+        return
     stale_periods = _stale_closed_periods(uuid)
     if not stale_periods:
         freeze_player_before_update(uuid)
@@ -781,7 +783,9 @@ def _baseline_map(season_key: str) -> dict[str, dict[str, int]]:
 def all_raw_rows(period: str = "lifetime") -> list[dict]:
     with _connect() as conn:
         rows = conn.execute(f"SELECT uuid, username, {', '.join(RAW_KEYS)} FROM bba_stats").fetchall()
-    current_rows = [dict(row) for row in rows]
+    current_rows = [
+        dict(row) for row in rows if not config.is_blocked_username(row["username"])
+    ]
     if period == "lifetime" or period == config.LIFETIME_KEY:
         return current_rows
     if not is_season_started(period):

@@ -11,6 +11,7 @@ from discord.ext import commands
 
 import config
 import db.database as db
+from cogs.common import UserFacingError, reject_blocked_username
 from mcc_api.client import McApiError, PlayerNotFoundError, RateLimitedError, StatisticsPrivateError, client
 from render.name_colors import named_color_choices, parse_color
 from render.stats_card import render_stats_card
@@ -54,7 +55,11 @@ class DebugCog(commands.Cog):
             return
 
         try:
+            reject_blocked_username(username.strip())
             player_stats = await asyncio.to_thread(client.get_player_stats, username.strip())
+        except UserFacingError as e:
+            await interaction.followup.send(str(e), ephemeral=True)
+            return
         except PlayerNotFoundError:
             await interaction.followup.send("u mispelled their username", ephemeral=True)
             return

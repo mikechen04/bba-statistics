@@ -10,7 +10,7 @@ from discord import app_commands
 from discord.ext import commands
 
 import db.database as db
-from cogs.common import PERIOD_CHOICES, UserFacingError, resolve_period, resolve_target_username
+from cogs.common import PERIOD_CHOICES, UserFacingError, reject_blocked_username, resolve_period, resolve_target_username
 from mcc_api.client import McApiError, PlayerNotFoundError, RateLimitedError, StatisticsPrivateError, client
 from render import theme
 from render.radar_card import RadarPlayer, render_radar_card
@@ -20,6 +20,7 @@ log = logging.getLogger(__name__)
 
 async def _fetch_player(username: str):
     """Fetch + cache one player's stats, or raise a short user-facing string."""
+    reject_blocked_username(username)
     try:
         player_stats = await asyncio.to_thread(client.get_player_stats, username)
     except PlayerNotFoundError:
