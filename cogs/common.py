@@ -22,6 +22,12 @@ def resolve_period(period: app_commands.Choice[str] | None) -> tuple[str, str]:
     return key, config.period_label(key)
 
 
+def reject_blocked_username(username: str | None) -> None:
+    """Pretend a blocked IGN does not exist (same shape as a misspelled lookup)."""
+    if config.is_blocked_username(username):
+        raise UserFacingError(config.BLOCKED_LOOKUP_MESSAGE)
+
+
 async def resolve_target_username(interaction: discord.Interaction, username: str | None) -> str:
     """Resolve which Minecraft username a command should look up.
 
@@ -29,10 +35,13 @@ async def resolve_target_username(interaction: discord.Interaction, username: st
     user's linked account (see /link).
     """
     if username:
-        return username.strip()
+        target = username.strip()
+        reject_blocked_username(target)
+        return target
 
     linked = db.get_linked_account(str(interaction.user.id))
     if linked:
+        reject_blocked_username(linked[1])
         return linked[1]
 
     raise UserFacingError(

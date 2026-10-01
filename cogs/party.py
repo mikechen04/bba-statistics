@@ -9,6 +9,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+import config
 import db.database as db
 from cogs.common import UserFacingError, resolve_target_username
 from mcc_api.client import McApiError, PlayerNotFoundError, RateLimitedError, client
@@ -26,7 +27,7 @@ async def _cache_party_members(members: list[dict]) -> None:
     """
     for member in members:
         username = member.get("username")
-        if not username:
+        if not username or config.is_blocked_username(username):
             continue
         try:
             stats = await asyncio.to_thread(client.get_player_stats, username)
