@@ -43,6 +43,13 @@ class Metric:
     fmt: Callable[[float], str]
     direction: str = "desc"  # "desc": higher is better. "asc": lower is better.
     rankable: bool = True
+    # /bbalb sort order. Defaults to `direction`; set separately when the
+    # board should rank volume (most deaths) instead of "better" (fewest).
+    leaderboard_direction: str | None = None
+    aliases: tuple[str, ...] = ()
+
+    def board_direction(self) -> str:
+        return self.leaderboard_direction or self.direction
 
 
 def _int_fmt(v: float) -> str:
@@ -80,7 +87,15 @@ METRICS: dict[str, Metric] = {
             "deaths_per_round", "Deaths Per Round", lambda r: safe_div(r["deaths"], r["rounds_played"]), _dec_fmt,
             direction="asc",
         ),
-        Metric("total_deaths", "Total Deaths", lambda r: r["deaths"], _int_fmt, direction="asc"),
+        Metric(
+            "total_deaths",
+            "Total Deaths",
+            lambda r: r["deaths"],
+            _int_fmt,
+            direction="asc",
+            leaderboard_direction="desc",
+            aliases=("deaths",),
+        ),
         Metric(
             "assists_per_game", "Assists Per Game", lambda r: safe_div(r["assists"], r["games_played"]), _dec_fmt
         ),
