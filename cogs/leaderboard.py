@@ -31,6 +31,35 @@ log = logging.getLogger(__name__)
 _LEADERBOARD_METRIC_KEYS = list(METRICS.keys())
 
 
+def matching_leaderboard_stats(current: str) -> list[str]:
+    """Stat keys shown in /bbalb autocomplete, best matches first (max 25)."""
+    current_lower = current.lower().strip()
+
+    def _aliases(key: str) -> tuple[str, ...]:
+        return tuple(alias.lower() for alias in METRICS[key].aliases)
+
+    matches = [
+        key
+        for key in _LEADERBOARD_METRIC_KEYS
+        if not current_lower
+        or current_lower in METRICS[key].label.lower()
+        or current_lower in key.lower()
+        or any(current_lower in alias for alias in _aliases(key))
+    ]
+
+    def _score(key: str) -> tuple[int, int]:
+        label = METRICS[key].label.lower()
+        aliases = _aliases(key)
+        if current_lower and (current_lower in aliases or current_lower == key or current_lower == label):
+            return (0, _LEADERBOARD_METRIC_KEYS.index(key))
+        if current_lower and (label.startswith(current_lower) or key.startswith(current_lower)):
+            return (1, _LEADERBOARD_METRIC_KEYS.index(key))
+        return (2, _LEADERBOARD_METRIC_KEYS.index(key))
+
+    matches.sort(key=_score)
+    return matches[:25]
+
+
 class LeaderboardCog(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
@@ -38,15 +67,8 @@ class LeaderboardCog(commands.Cog):
     async def _stat_autocomplete(
         self, interaction: discord.Interaction, current: str
     ) -> list[app_commands.Choice[str]]:
-        current_lower = current.lower().strip()
-        matches = [
-            key
-            for key in _LEADERBOARD_METRIC_KEYS
-            if not current_lower
-            or current_lower in METRICS[key].label.lower()
-            or current_lower in key.lower()
-        ]
-        return [app_commands.Choice(name=METRICS[key].label.lower(), value=key) for key in matches[:25]]
+        matches = matching_leaderboard_stats(current)
+        return [app_commands.Choice(name=METRICS[key].label.lower(), value=key) for key in matches]
 
     @app_commands.command(name="bbalb", description="Show the top 10 tracked players for a Battle Box Arena stat.")
     @app_commands.describe(

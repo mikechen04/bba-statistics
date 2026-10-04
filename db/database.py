@@ -873,7 +873,7 @@ def compute_leaderboard(metric_key: str, period: str = "lifetime") -> list[dict]
     min_games = min_games_for_ranking(period)
     rows = [r for r in all_raw_rows(period) if (r.get("games_played") or 0) >= min_games]
     scored = [(row["uuid"], row["username"], compute_all(row)[metric_key]) for row in rows]
-    scored.sort(key=lambda t: t[2], reverse=(metric.direction != "asc"))
+    scored.sort(key=lambda t: t[2], reverse=(metric.board_direction() != "asc"))
     return [
         {"rank": i + 1, "uuid": uuid, "username": username, "value": value}
         for i, (uuid, username, value) in enumerate(scored)
