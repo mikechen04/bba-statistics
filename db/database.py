@@ -78,6 +78,17 @@ CREATE TABLE IF NOT EXISTS bot_meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS bot_dms (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    discord_id TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    username TEXT NOT NULL,
+    content TEXT NOT NULL,
+    attachments TEXT NOT NULL DEFAULT '',
+    received_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_bot_dms_received_at ON bot_dms(received_at);
 """
 
 
@@ -908,3 +919,32 @@ def get_linked_account(discord_id: str) -> tuple[str, str] | None:
             "SELECT uuid, username FROM linked_accounts WHERE discord_id = ?", (discord_id,)
         ).fetchone()
     return (row["uuid"], row["username"]) if row else None
+
+
+def save_bot_dm(
+    discord_id: str,
+    display_name: str,
+    username: str,
+    content: str,
+    attachments: str = "",
+) -> int:
+    """Store a user DM so the owner can read it later with `inbox`."""
+    with _connect() as conn:
+        cur = conn.execute(
+            "INSERT INTO bot_dms (discord_id, display_name, username, content, attachments, received_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (discord_id, display_name, username, content, attachments, _current_time()),
+        )
+    return int(cur.lastrowid)
+
+
+def list_bot_dms(limit: int = 20) -> list[dict]:
+    """Newest user DMs first."""
+    limit = max(1, min(int(limit), 50))
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT id, discord_id, display_name, username, content, attachments, received_at "
+            "FROM bot_dms ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [dict(row) for row in rows]

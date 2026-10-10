@@ -11,6 +11,7 @@ A Discord bot for MCC Island **Battle Box Arena** stats.
 - **`/link username`** — link your Discord account to an MC username so you can omit `username` above.
 - **`/unlink`** — remove your linked account.
 - **`/myhistory [count]`** — owner-only DM command that reads uploaded local match history from your in-game mod (`count` 1-10).
+- **User DMs** — anyone DMing the bot (e.g. VIP custom-name requests) is saved and forwarded to the owner. The owner can also DM `inbox` to list recent ones.
 
 ## How to run
 
