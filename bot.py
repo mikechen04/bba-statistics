@@ -49,16 +49,96 @@ class BbaBot(commands.Bot):
     async def on_ready(self) -> None:
         log.info("Logged in as %s (id=%s)", self.user, self.user.id if self.user else "?")
 
+    async def _sender_is_owner(self, user: discord.abc.User) -> bool:
+        if config.OWNER_DISCORD_IDS:
+            return user.id in config.OWNER_DISCORD_IDS
+        return await self.is_owner(user)
+
+    async def _owner_ids(self) -> set[int]:
+        if config.OWNER_DISCORD_IDS:
+            return set(config.OWNER_DISCORD_IDS)
+        app = self.application
+        if app is None:
+            await self.application_info()
+            app = self.application
+        owner = getattr(app, "owner", None) if app else None
+        return {owner.id} if owner else set()
+
+    async def _forward_user_dm(self, message: discord.Message, stored_id: int) -> None:
+        text = (message.content or "").strip() or "(no text)"
+        files = [a.filename for a in message.attachments]
+        extra = f"\n[{len(files)} attachment(s): {', '.join(files)}]" if files else ""
+        label = message.author.display_name
+        uname = message.author.name
+        payload = (
+            f"**DM from {label} (@{uname})** `{message.author.id}` · #{stored_id}\n"
+            f"{text}{extra}"
+        )
+        for owner_id in await self._owner_ids():
+            if owner_id == message.author.id:
+                continue
+            try:
+                owner = await self.fetch_user(owner_id)
+                await owner.send(payload[:1900])
+            except Exception:
+                log.exception("Failed to forward user DM to owner %s", owner_id)
+
+    async def _handle_user_dm(self, message: discord.Message) -> None:
+        text = (message.content or "").strip()
+        files = [a.filename for a in message.attachments]
+        if not text and not files:
+            log.warning(
+                "Got an empty DM from %s (%s) — enable Message Content Intent if this was text",
+                message.author,
+                message.author.id,
+            )
+            return
+
+        stored_id = await asyncio.to_thread(
+            db.save_bot_dm,
+            str(message.author.id),
+            message.author.display_name,
+            message.author.name,
+            text,
+            ", ".join(files),
+        )
+        log.info("Stored user DM #%s from %s (%s)", stored_id, message.author, message.author.id)
+        await self._forward_user_dm(message, stored_id)
+        await message.channel.send("got it")
+
+    async def _send_dm_inbox(self, message: discord.Message) -> None:
+        rows = await asyncio.to_thread(db.list_bot_dms, 20)
+        if not rows:
+            await message.channel.send("no user dms yet")
+            return
+        chunks = [f"**{len(rows)} latest user DM(s)**"]
+        for row in rows:
+            stamp = (row.get("received_at") or "")[:19].replace("T", " ")
+            who = row.get("display_name") or row.get("username") or "?"
+            uname = row.get("username") or "?"
+            body = (row.get("content") or "").strip() or "(no text)"
+            files = (row.get("attachments") or "").strip()
+            extra = f"\n[{files}]" if files else ""
+            chunks.append(
+                f"\n**#{row['id']}** {who} (@{uname}) `{row['discord_id']}` · {stamp}\n{body}{extra}"
+            )
+        text = "\n".join(chunks)
+        while text:
+            await message.channel.send(text[:1900])
+            text = text[1900:]
+
     async def on_message(self, message: discord.Message) -> None:
-        # Owner-only, DMs only — no slash command, so other users never see it.
-        # DM the bot one of:
+        # DMs only. Owner commands:
         # servers / server / members / guilds
         # history / myhistory [count]
+        # inbox / dms / messages
+        # Everyone else: store + forward the DM to the owner (VIP color requests, etc).
         if message.guild is not None or message.author.bot:
             return
 
         content = (message.content or "").strip().lower()
         history_trigger = False
+        inbox_trigger = False
         requested_count = 5
         if content:
             parts = content.split()
@@ -71,28 +151,22 @@ class BbaBot(commands.Bot):
                     except Exception:
                         requested_count = 5
                 requested_count = max(1, min(10, requested_count))
+            elif head in {"inbox", "dms", "messages", "mail"}:
+                inbox_trigger = True
 
-        if not history_trigger and content not in {"servers", "server", "members", "guilds"}:
-            if not content:
-                log.warning(
-                    "Got an empty DM from %s (%s) — enable Message Content Intent if this was 'servers'",
-                    message.author,
-                    message.author.id,
-                )
+        owner_command = history_trigger or inbox_trigger or content in {"servers", "server", "members", "guilds"}
+        if not owner_command:
+            await self._handle_user_dm(message)
             return
 
-        allowed = False
-        if config.OWNER_DISCORD_IDS:
-            allowed = message.author.id in config.OWNER_DISCORD_IDS
-        else:
-            allowed = await self.is_owner(message.author)
-
+        allowed = await self._sender_is_owner(message.author)
         if not allowed:
-            log.info(
-                "Ignored servers DM from %s (%s) — not owner. Set OWNER_DISCORD_ID in .env to your user id.",
-                message.author,
-                message.author.id,
-            )
+            # Treat a non-owner typing an owner keyword as a normal user DM.
+            await self._handle_user_dm(message)
+            return
+
+        if inbox_trigger:
+            await self._send_dm_inbox(message)
             return
 
         if history_trigger:
