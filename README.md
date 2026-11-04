@@ -12,6 +12,10 @@ A Discord bot for MCC Island **Battle Box Arena** stats.
 - **`/unlink`** — remove your linked account.
 - **`/myhistory [count]`** — owner-only DM command that reads uploaded local match history from your in-game mod (`count` 1-10).
 
+## Tracking notes
+
+Season / off-season stats are lifetime totals minus a frozen start baseline. When a new period opens, the bot refreshes every player already in its local cache from the MCC API before locking baselines, then keeps refreshing that full known-player list every 6 hours so period boards move without each person running a command.
+
 ## How to run
 
 1. Install dependencies:

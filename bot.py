@@ -13,7 +13,7 @@ from discord.ext import commands, tasks
 import config
 import db.database as db
 from db.database import init_db
-from mcc_api.client import McApiError, client
+from mcc_api.client import McApiError, PlayerNotFoundError, RateLimitedError, StatisticsPrivateError, client
 from mcc_api.queries import LEADERBOARD_SEED_KEYS
 from cogs.history import send_history_image
 
@@ -29,6 +29,8 @@ COGS = ("cogs.link", "cogs.stats", "cogs.party", "cogs.leaderboard", "cogs.radar
 class BbaBot(commands.Bot):
     def __init__(self) -> None:
         super().__init__(command_prefix=commands.when_mentioned, intents=INTENTS)
+        self._startup_tracked_refresh_done = False
+        self._tracked_refresh_lock = asyncio.Lock()
 
     async def setup_hook(self) -> None:
         for cog in COGS:
@@ -44,10 +46,17 @@ class BbaBot(commands.Bot):
             log.info("Synced %d command(s) globally", len(synced))
 
         self.seed_leaderboards.start()
+        self.refresh_tracked_players_task.start()
         self.activate_seasons.start()
 
     async def on_ready(self) -> None:
         log.info("Logged in as %s (id=%s)", self.user, self.user.id if self.user else "?")
+        if not self._startup_tracked_refresh_done:
+            self._startup_tracked_refresh_done = True
+            # Kick off immediately so the open period starts tracking without
+            # waiting for the first 6-hour refresh tick (or for each player to
+            # look themselves up).
+            asyncio.create_task(self.refresh_tracked_players("startup"), name="startup-tracked-refresh")
 
     async def on_message(self, message: discord.Message) -> None:
         # Owner-only, DMs only — no slash command, so other users never see it.
@@ -160,6 +169,72 @@ class BbaBot(commands.Bot):
             await message.channel.send(text[:1900])
             text = text[1900:]
 
+    async def refresh_tracked_players(self, reason: str = "refresh") -> tuple[int, int, int]:
+        """Re-fetch live stats for every player already in the local cache.
+
+        Period deltas only move when lifetime snapshots are updated. Without this,
+        known players stay frozen at their last Discord lookup until they search
+        themselves again.
+        """
+        async with self._tracked_refresh_lock:
+            players = await asyncio.to_thread(db.list_tracked_players)
+            if not players:
+                log.info("Tracked-player refresh (%s): no cached players yet", reason)
+                return 0, 0, 0
+
+            updated = skipped = failed = 0
+            log.info("Tracked-player refresh (%s): starting for %d player(s)", reason, len(players))
+            for index, (_uuid, username) in enumerate(players, start=1):
+                try:
+                    stats = await asyncio.to_thread(client.get_player_stats, username)
+                    await asyncio.to_thread(db.track_player_stats, stats.uuid, stats.username, stats.raw)
+                    updated += 1
+                except (PlayerNotFoundError, StatisticsPrivateError) as exc:
+                    skipped += 1
+                    log.info(
+                        "Tracked-player refresh (%s): skipped %s (%s)",
+                        reason,
+                        username,
+                        exc.__class__.__name__,
+                    )
+                except RateLimitedError:
+                    failed += 1
+                    log.warning(
+                        "Tracked-player refresh (%s): rate-limited at %s (%d/%d); aborting remaining",
+                        reason,
+                        username,
+                        index,
+                        len(players),
+                    )
+                    break
+                except McApiError:
+                    failed += 1
+                    log.exception("Tracked-player refresh (%s): API error for %s", reason, username)
+                except Exception:
+                    failed += 1
+                    log.exception("Tracked-player refresh (%s): unexpected error for %s", reason, username)
+
+                if index % 50 == 0 or index == len(players):
+                    log.info(
+                        "Tracked-player refresh (%s): progress %d/%d (updated=%d skipped=%d failed=%d)",
+                        reason,
+                        index,
+                        len(players),
+                        updated,
+                        skipped,
+                        failed,
+                    )
+
+            log.info(
+                "Tracked-player refresh (%s): done updated=%d skipped=%d failed=%d total=%d",
+                reason,
+                updated,
+                skipped,
+                failed,
+                len(players),
+            )
+            return updated, skipped, failed
+
     @tasks.loop(hours=6)
     async def seed_leaderboards(self) -> None:
         """Grows the local percentile pool with real players by crawling the
@@ -176,14 +251,19 @@ class BbaBot(commands.Bot):
                 await asyncio.to_thread(db.track_player_stats, player.uuid, player.username, player.raw)
             log.info("Leaderboard seed: cached %d player(s) from %s", len(players), stat_key)
 
+    @tasks.loop(hours=6)
+    async def refresh_tracked_players_task(self) -> None:
+        """Keep period stats moving for everyone the bot has seen at least once."""
+        await self.refresh_tracked_players("periodic")
+
     @tasks.loop(minutes=1)
     async def activate_seasons(self) -> None:
         """Activate any seasonal period whose start time has arrived.
 
-        A period that follows a closed season is frozen from the current DB
-        first (so Season 4 stays view-only), then leaderboards are seeded so
-        new games land in the new period. A first-of-its-kind season still
-        seeds first so the start baseline is as complete as possible.
+        Known players are refreshed from the live API before freeze so closed-
+        season finals and the next period's baselines match current lifetime
+        totals, not stale Discord-lookup snapshots. Leaderboards are still
+        seeded afterward to discover new high-activity players.
         """
         periods = sorted(config.STAT_PERIODS.values(), key=lambda p: p.start_at)
         for period in periods:
@@ -192,6 +272,7 @@ class BbaBot(commands.Bot):
 
             previous = config.previous_period(period.key)
             if previous is not None:
+                await self.refresh_tracked_players(f"{period.label} pre-freeze")
                 finals, frozen = await asyncio.to_thread(db.freeze_season_end, previous.key, period.key)
                 await asyncio.to_thread(db.mark_season_activated, period.key)
                 log.info(
@@ -224,6 +305,7 @@ class BbaBot(commands.Bot):
                     for player in players:
                         await asyncio.to_thread(db.track_player_stats, player.uuid, player.username, player.raw)
 
+                await self.refresh_tracked_players(f"{period.label} pre-baseline")
                 frozen = await asyncio.to_thread(db.capture_season_baselines_for_all, period.key)
                 await asyncio.to_thread(db.mark_season_activated, period.key)
                 log.info(
@@ -248,6 +330,13 @@ class BbaBot(commands.Bot):
     @seed_leaderboards.before_loop
     async def _before_seed_leaderboards(self) -> None:
         await self.wait_until_ready()
+
+    @refresh_tracked_players_task.before_loop
+    async def _before_refresh_tracked_players(self) -> None:
+        await self.wait_until_ready()
+        # Startup already runs an immediate refresh; wait one full interval
+        # before the first periodic tick so we don't double-hit the API.
+        await asyncio.sleep(6 * 3600)
 
     @activate_seasons.before_loop
     async def _before_activate_seasons(self) -> None:

@@ -25,6 +25,29 @@ def _raw(**overrides: int) -> dict[str, int]:
     return base
 
 
+class TrackedPlayerListTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self._original_db = config.DB_PATH
+        config.DB_PATH = Path(self._tmpdir.name) / "test.sqlite3"
+        self._original_now = db._now
+        db._now = lambda: DURING_S5
+        db.init_db()
+
+    def tearDown(self) -> None:
+        db._now = self._original_now
+        config.DB_PATH = self._original_db
+        self._tmpdir.cleanup()
+
+    def test_list_tracked_players_skips_blocked_names(self) -> None:
+        db.upsert_player_stats("u1", "Alpha", _raw(games_played=10))
+        db.upsert_player_stats("blocked", "CHATSURA", _raw(games_played=99))
+        db.upsert_player_stats("u2", "bravo", _raw(games_played=20))
+
+        players = db.list_tracked_players()
+        self.assertEqual(players, [("u1", "Alpha"), ("u2", "bravo")])
+
+
 class PeriodConfigTests(unittest.TestCase):
     def test_offseason_starts_when_season4_ends(self) -> None:
         self.assertEqual(config.next_period(config.SEASON4_KEY), config.S4_OFFSEASON)

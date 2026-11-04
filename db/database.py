@@ -16,6 +16,10 @@ searched directly:
      high-activity players in bulk (see mcc_api.client.get_leaderboard and
      bot.py's `seed_leaderboards` task).
 
+Known players are also re-fetched from the API on period activation (before
+freeze) and on a periodic refresh, so season/off-season deltas keep moving
+without waiting for each player to run a Discord command.
+
 Season stats are lifetime totals minus a frozen season-start baseline. Baselines
 that were captured from empty/incomplete rows are repaired on startup so season
 boards don't accidentally show lifetime values.
@@ -819,6 +823,17 @@ def get_player_raw(uuid: str, period: str = "lifetime") -> dict[str, int]:
     period_current = _current_rows_for_period(period, [current])[0]
     season = _season_raw_from_rows(period_current, baseline)
     return {k: int(season.get(k) or 0) for k in RAW_KEYS}
+
+
+def list_tracked_players() -> list[tuple[str, str]]:
+    """Return (uuid, username) for every non-blocked player in the local cache."""
+    with _connect() as conn:
+        rows = conn.execute("SELECT uuid, username FROM bba_stats ORDER BY lower(username)").fetchall()
+    return [
+        (row["uuid"], row["username"])
+        for row in rows
+        if not config.is_blocked_username(row["username"])
+    ]
 
 
 def tracked_player_count(period: str = "lifetime") -> int:
