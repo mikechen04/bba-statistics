@@ -1,4 +1,4 @@
-"""Period windows: Season 4 freeze, S4 Off-Season, and Season 5 deltas."""
+"""Period windows: Season 4 freeze, S4 Off-Season, Season 5, and S5 Off-Season deltas."""
 from __future__ import annotations
 
 import tempfile
@@ -13,8 +13,10 @@ from stats.derive import RAW_KEYS
 DURING_S4 = datetime(2026, 8, 15, 12, 0, tzinfo=timezone.utc)
 AFTER_S4 = datetime(2026, 9, 8, 12, 0, tzinfo=timezone.utc)  # 8:00 AM Eastern
 BEFORE_S4 = datetime(2026, 7, 1, 12, 0, tzinfo=timezone.utc)
-DURING_OFFSEASON = datetime(2026, 9, 15, 12, 0, tzinfo=timezone.utc)
-AFTER_S5 = datetime(2026, 9, 22, 10, 0, tzinfo=timezone.utc)  # ~2 hours after 08:09 UTC
+DURING_S4_OFFSEASON = datetime(2026, 9, 15, 12, 0, tzinfo=timezone.utc)
+AFTER_S5_START = datetime(2026, 9, 22, 10, 0, tzinfo=timezone.utc)  # ~2 hours after 08:09 UTC
+DURING_S5 = datetime(2026, 10, 15, 12, 0, tzinfo=timezone.utc)
+AFTER_S5_END = datetime(2026, 11, 3, 14, 0, tzinfo=timezone.utc)  # ~3 hours after 6am EST
 
 
 def _raw(**overrides: int) -> dict[str, int]:
@@ -29,11 +31,16 @@ class PeriodConfigTests(unittest.TestCase):
         self.assertEqual(config.previous_period(config.S4_OFFSEASON_KEY), config.SEASON4)
         self.assertEqual(config.SEASON4.end_at, config.S4_OFFSEASON.start_at)
 
-    def test_season5_starts_when_offseason_ends(self) -> None:
+    def test_season5_starts_when_s4_offseason_ends(self) -> None:
         self.assertEqual(config.next_period(config.S4_OFFSEASON_KEY), config.SEASON5)
         self.assertEqual(config.previous_period(config.SEASON5_KEY), config.S4_OFFSEASON)
         self.assertEqual(config.S4_OFFSEASON.end_at, config.SEASON5.start_at)
-        self.assertIsNone(config.SEASON5.end_at)
+
+    def test_s5_offseason_starts_when_season5_ends(self) -> None:
+        self.assertEqual(config.next_period(config.SEASON5_KEY), config.S5_OFFSEASON)
+        self.assertEqual(config.previous_period(config.S5_OFFSEASON_KEY), config.SEASON5)
+        self.assertEqual(config.SEASON5.end_at, config.S5_OFFSEASON.start_at)
+        self.assertIsNone(config.S5_OFFSEASON.end_at)
 
     def test_cutoff_is_6am_eastern_on_sep_8(self) -> None:
         start = config.S4_OFFSEASON_START_AT.astimezone(timezone.utc)
@@ -43,23 +50,31 @@ class PeriodConfigTests(unittest.TestCase):
         start = config.SEASON5_START_AT.astimezone(timezone.utc)
         self.assertEqual(start, datetime(2026, 9, 22, 8, 9, tzinfo=timezone.utc))
 
+    def test_s5_offseason_starts_at_6am_est_on_nov_3(self) -> None:
+        start = config.S5_OFFSEASON_START_AT.astimezone(timezone.utc)
+        self.assertEqual(start, datetime(2026, 11, 3, 11, 0, tzinfo=timezone.utc))
+
     def test_default_period_follows_open_window(self) -> None:
         self.assertEqual(config.default_period_key(BEFORE_S4), config.LIFETIME_KEY)
         self.assertEqual(config.default_period_key(DURING_S4), config.SEASON4_KEY)
         self.assertEqual(config.default_period_key(AFTER_S4), config.S4_OFFSEASON_KEY)
-        self.assertEqual(config.default_period_key(DURING_OFFSEASON), config.S4_OFFSEASON_KEY)
-        self.assertEqual(config.default_period_key(AFTER_S5), config.SEASON5_KEY)
+        self.assertEqual(config.default_period_key(DURING_S4_OFFSEASON), config.S4_OFFSEASON_KEY)
+        self.assertEqual(config.default_period_key(AFTER_S5_START), config.SEASON5_KEY)
+        self.assertEqual(config.default_period_key(DURING_S5), config.SEASON5_KEY)
+        self.assertEqual(config.default_period_key(AFTER_S5_END), config.S5_OFFSEASON_KEY)
 
-    def test_period_choices_include_season5_and_offseason(self) -> None:
+    def test_period_choices_include_s5_offseason(self) -> None:
         values = dict(config.period_choice_values())
+        self.assertEqual(values["s5 off-season"], config.S5_OFFSEASON_KEY)
         self.assertEqual(values["season5"], config.SEASON5_KEY)
         self.assertEqual(values["s4 off-season"], config.S4_OFFSEASON_KEY)
         self.assertEqual(values["season4"], config.SEASON4_KEY)
         self.assertEqual(values["lifetime"], config.LIFETIME_KEY)
         names = [name for name, _ in config.period_choice_values()]
-        self.assertEqual(names[0], "season5")
+        self.assertEqual(names[0], "s5 off-season")
 
-    def test_offseason_ranking_floor_is_15_games(self) -> None:
+    def test_ranking_floors(self) -> None:
+        self.assertEqual(db.min_games_for_ranking(config.S5_OFFSEASON_KEY), 25)
         self.assertEqual(db.min_games_for_ranking(config.S4_OFFSEASON_KEY), 15)
         self.assertEqual(db.min_games_for_ranking(config.SEASON4_KEY), 75)
         self.assertEqual(db.min_games_for_ranking(config.SEASON5_KEY), 75)
@@ -214,18 +229,18 @@ class SeasonFreezeTests(unittest.TestCase):
         self.assertEqual(db.repair_stale_offseason_splits(), 0)
         self.assertEqual(db.get_player_raw("pickle", config.S4_OFFSEASON_KEY)["games_played"], 10)
 
-    def test_new_games_after_season5_go_to_season5_not_offseason(self) -> None:
+    def test_new_games_after_season5_go_to_season5_not_s4_offseason(self) -> None:
         db.track_player_stats("u1", "Player", _raw(games_played=100, kills=50, games_won=40, rounds_played=300))
         db.track_player_stats("u1", "Player", _raw(games_played=175, kills=80, games_won=70, rounds_played=500))
 
-        db._now = lambda: DURING_OFFSEASON
+        db._now = lambda: DURING_S4_OFFSEASON
         db.track_player_stats("u1", "Player", _raw(games_played=175, kills=80, games_won=70, rounds_played=500))
         db.freeze_season_end(config.SEASON4_KEY, config.S4_OFFSEASON_KEY)
         db.mark_season_activated(config.S4_OFFSEASON_KEY)
         db.track_player_stats("u1", "Player", _raw(games_played=190, kills=90, games_won=76, rounds_played=540))
 
         # Stamp the off-season snapshot after the S5 cutoff so later games are S5.
-        db._now = lambda: AFTER_S5
+        db._now = lambda: AFTER_S5_START
         db.track_player_stats("u1", "Player", _raw(games_played=190, kills=90, games_won=76, rounds_played=540))
         db.freeze_season_end(config.S4_OFFSEASON_KEY, config.SEASON5_KEY)
         db.mark_season_activated(config.SEASON5_KEY)
@@ -244,13 +259,45 @@ class SeasonFreezeTests(unittest.TestCase):
         self.assertEqual(lifetime["games_played"], 205)
 
     def test_first_seen_during_season5_has_no_prior_season_stats(self) -> None:
-        db._now = lambda: AFTER_S5
+        db._now = lambda: AFTER_S5_START
         db.track_player_stats("u3", "S5Player", _raw(games_played=80, kills=20, games_won=30, rounds_played=200))
         db.track_player_stats("u3", "S5Player", _raw(games_played=90, kills=24, games_won=34, rounds_played=230))
 
         self.assertEqual(db.get_player_raw("u3", config.SEASON4_KEY)["games_played"], 0)
         self.assertEqual(db.get_player_raw("u3", config.S4_OFFSEASON_KEY)["games_played"], 0)
         self.assertEqual(db.get_player_raw("u3", config.SEASON5_KEY)["games_played"], 10)
+
+    def test_new_games_after_s5_end_go_to_s5_offseason_not_season5(self) -> None:
+        db._now = lambda: AFTER_S5_START
+        db.track_player_stats("u1", "Player", _raw(games_played=100, kills=50, games_won=40, rounds_played=300))
+        db.freeze_season_end(config.S4_OFFSEASON_KEY, config.SEASON5_KEY)
+        db.mark_season_activated(config.SEASON5_KEY)
+        db.track_player_stats("u1", "Player", _raw(games_played=175, kills=80, games_won=70, rounds_played=500))
+
+        db._now = lambda: AFTER_S5_END
+        db.track_player_stats("u1", "Player", _raw(games_played=175, kills=80, games_won=70, rounds_played=500))
+        db.freeze_season_end(config.SEASON5_KEY, config.S5_OFFSEASON_KEY)
+        db.mark_season_activated(config.S5_OFFSEASON_KEY)
+
+        db.track_player_stats("u1", "Player", _raw(games_played=200, kills=95, games_won=82, rounds_played=560))
+
+        s5 = db.get_player_raw("u1", config.SEASON5_KEY)
+        off = db.get_player_raw("u1", config.S5_OFFSEASON_KEY)
+        lifetime = db.get_player_raw("u1", config.LIFETIME_KEY)
+
+        self.assertEqual(s5["games_played"], 75)
+        self.assertEqual(s5["kills"], 30)
+        self.assertEqual(off["games_played"], 25)
+        self.assertEqual(off["kills"], 15)
+        self.assertEqual(lifetime["games_played"], 200)
+
+    def test_first_seen_during_s5_offseason_has_no_season5_stats(self) -> None:
+        db._now = lambda: AFTER_S5_END
+        db.track_player_stats("u4", "OffPlayer", _raw(games_played=80, kills=20, games_won=30, rounds_played=200))
+        db.track_player_stats("u4", "OffPlayer", _raw(games_played=90, kills=24, games_won=34, rounds_played=230))
+
+        self.assertEqual(db.get_player_raw("u4", config.SEASON5_KEY)["games_played"], 0)
+        self.assertEqual(db.get_player_raw("u4", config.S5_OFFSEASON_KEY)["games_played"], 10)
 
 
 if __name__ == "__main__":

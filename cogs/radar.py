@@ -48,7 +48,7 @@ class RadarCog(commands.Cog):
     @app_commands.describe(
         username1="First MCC Island username (defaults to your linked account).",
         username2="Optional second username to overlay on the radar.",
-        period="Show Season 5, S4 Off-Season (final), Season 4 (final), or lifetime. Defaults to Season 5.",
+        period="Show S5 Off-Season, Season 5 (final), S4 Off-Season (final), Season 4 (final), or lifetime. Defaults to S5 Off-Season.",
     )
     @app_commands.choices(period=PERIOD_CHOICES)
     @app_commands.allowed_installs(guilds=True, users=True)

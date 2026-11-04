@@ -40,9 +40,10 @@ GAME = "BATTLE_BOX_ARENA"
 
 BOT_TIMEZONE = timezone(timedelta(hours=9), name="JST")
 
-# Sep 8, 2026 is during US daylight saving, so Eastern Time is EDT (UTC-4).
-# "6am EST" in the season cutoff means 6:00 AM Eastern that morning.
+# US Eastern: EDT (UTC-4) during daylight saving, EST (UTC-5) after first Sunday in Nov.
+# "6am EST" in season cutoffs means 6:00 AM Eastern that morning.
 EASTERN_EDT = timezone(timedelta(hours=-4), name="EDT")
+EASTERN_EST = timezone(timedelta(hours=-5), name="EST")
 
 LIFETIME_KEY = "lifetime"
 LIFETIME_LABEL = "Lifetime"
@@ -74,6 +75,7 @@ SEASON4 = StatPeriod(
     choice_name="season4",
     start_at=datetime(2026, 7, 28, 19, 0, tzinfo=BOT_TIMEZONE),
     # Inclusive of games through 5:59 AM Eastern; off-season starts at 6:00 AM.
+    # Sep 8, 2026 is during DST → EDT.
     end_at=datetime(2026, 9, 8, 6, 0, tzinfo=EASTERN_EDT),
 )
 # Season 5 starts 2026-09-22 08:09 UTC (17:09 JST). S4 Off-Season is view-only
@@ -87,17 +89,29 @@ S4_OFFSEASON = StatPeriod(
     end_at=SEASON5_START_AT,
     min_games=15,
 )
+# Season 5 ends / S5 Off-Season starts 2026-11-03 6:00 AM Eastern.
+# Nov 3 is after DST ends (Nov 1) → EST.
+S5_OFFSEASON_START_AT = datetime(2026, 11, 3, 6, 0, tzinfo=EASTERN_EST)
 SEASON5 = StatPeriod(
     key="season5",
     label="Season 5",
     choice_name="season5",
     start_at=SEASON5_START_AT,
+    end_at=S5_OFFSEASON_START_AT,
+)
+S5_OFFSEASON = StatPeriod(
+    key="s5offseason",
+    label="S5 Off-Season",
+    choice_name="s5 off-season",
+    start_at=S5_OFFSEASON_START_AT,
+    min_games=25,
 )
 
 STAT_PERIODS: dict[str, StatPeriod] = {
     SEASON4.key: SEASON4,
     S4_OFFSEASON.key: S4_OFFSEASON,
     SEASON5.key: SEASON5,
+    S5_OFFSEASON.key: S5_OFFSEASON,
 }
 
 # Backward-compatible aliases used throughout the bot.
@@ -112,6 +126,11 @@ S4_OFFSEASON_END_AT = S4_OFFSEASON.end_at
 SEASON5_KEY = SEASON5.key
 SEASON5_LABEL = SEASON5.label
 SEASON5_START_AT = SEASON5.start_at
+SEASON5_END_AT = SEASON5.end_at
+S5_OFFSEASON_KEY = S5_OFFSEASON.key
+S5_OFFSEASON_LABEL = S5_OFFSEASON.label
+S5_OFFSEASON_START_AT = S5_OFFSEASON.start_at
+S5_OFFSEASON_END_AT = S5_OFFSEASON.end_at
 
 
 def _utc(dt: datetime) -> datetime:
